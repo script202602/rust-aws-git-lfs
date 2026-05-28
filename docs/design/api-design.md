@@ -2,7 +2,7 @@
 
 ## 概要
 
-Git LFS プロトコル仕様 ([git-lfs/lfs-spec](https://github.com/git-lfs/git-lfs/blob/main/docs/api)) に準拠したエンドポイントと、リポジトリ管理用の独自エンドポイントを提供する。
+Git LFS プロトコル仕様 ([git-lfs/lfs-spec](https://github.com/git-lfs/git-lfs/blob/main/docs/api)) に準拠したエンドポイントと、リポジトリ削除用のエンドポイントを提供する。
 
 ---
 
@@ -31,12 +31,6 @@ LFS 系エンドポイントは Git LFS 仕様に従い以下を使用する。
 ```
 Accept: application/vnd.git-lfs+json
 Content-Type: application/vnd.git-lfs+json
-```
-
-管理系エンドポイントは標準 JSON を使用する。
-
-```
-Content-Type: application/json
 ```
 
 ### エラーレスポンス形式
@@ -102,7 +96,7 @@ Git LFS Batch API。アップロードまたはダウンロード用の presigne
       "authenticated": true,
       "actions": {
         "upload": {
-          "href": "https://s3.amazonaws.com/bucket/objects/owner/repo/4d/7a/4d7a...?X-Amz-...",
+          "href": "https://s3.amazonaws.com/bucket/objects/owner/repo/4d7af9c6e8b123456...?X-Amz-...",
           "expires_in": 3600
         },
         "verify": {
@@ -120,16 +114,13 @@ Git LFS Batch API。アップロードまたはダウンロード用の presigne
 
 | コード | 説明 |
 |---|---|
-| 404 | リポジトリが存在しない |
-| 409 | リポジトリが削除処理中 (`status = deleting`) |
 | 422 | リクエストボディが不正 |
 
 **処理フロー:**
-1. DynamoDB でリポジトリ確認 (`status = active`)
-2. `operation = upload` の場合:
+1. `operation = upload` の場合:
    - S3 で OID の存在確認 (HeadObject)
    - 存在しない場合のみ presigned PUT URL を生成 (有効期限: 3600 秒)
-3. `operation = download` の場合:
+2. `operation = download` の場合:
    - S3 で OID の存在確認 (HeadObject)
    - 存在する場合のみ presigned GET URL を生成 (有効期限: 3600 秒)
    - 存在しない場合は `error.code = 404` をオブジェクトレベルで返す
@@ -164,120 +155,11 @@ Git LFS Batch API。アップロードまたはダウンロード用の presigne
 
 ## リポジトリ管理エンドポイント
 
-Lambda: **repo-manager** (一覧・登録) / **repo-delete-initiator** (削除)
-
-### GET `/repos`
-
-登録済みリポジトリの一覧を取得する。
-
-**クエリパラメータ:**
-
-| 名前 | 型 | 必須 | 説明 |
-|---|---|---|---|
-| `limit` | number | - | 取得件数 (デフォルト: 50、最大: 100) |
-| `last_evaluated_key` | string | - | ページネーション用トークン (Base64) |
-
-**レスポンス (200 OK):**
-
-```json
-{
-  "repositories": [
-    {
-      "owner": "myorg",
-      "repo": "myrepo",
-      "s3_prefix": "objects/myorg/myrepo/",
-      "status": "active",
-      "created_at": "2024-01-15T10:00:00Z",
-      "updated_at": "2024-01-15T10:00:00Z",
-      "description": "My large file repository"
-    }
-  ],
-  "last_evaluated_key": null
-}
-```
-
-**処理フロー:**
-1. DynamoDB GSI (`status-index`) で `status = active` のレコードを取得
-2. ページネーション対応 (`LastEvaluatedKey` を Base64 エンコードして返す)
-
----
-
-### POST `/repos`
-
-新規リポジトリを登録する。
-
-**リクエストボディ:**
-
-```json
-{
-  "owner": "myorg",
-  "repo": "myrepo",
-  "description": "My large file repository"
-}
-```
-
-| フィールド | 型 | 必須 | 説明 |
-|---|---|---|---|
-| `owner` | string | ✓ | オーナー名 (`[a-zA-Z0-9_-]+`) |
-| `repo` | string | ✓ | リポジトリ名 (`[a-zA-Z0-9_.-]+`) |
-| `description` | string | - | 説明 (最大 255 文字) |
-
-**レスポンス (201 Created):**
-
-```json
-{
-  "owner": "myorg",
-  "repo": "myrepo",
-  "s3_prefix": "objects/myorg/myrepo/",
-  "status": "active",
-  "created_at": "2024-01-15T10:00:00Z",
-  "updated_at": "2024-01-15T10:00:00Z"
-}
-```
-
-**エラーレスポンス:**
-
-| コード | 説明 |
-|---|---|
-| 409 | 同名のリポジトリが既に存在する |
-| 422 | バリデーションエラー (不正な文字など) |
-
-**処理フロー:**
-1. `owner` / `repo` のバリデーション
-2. DynamoDB に PutItem (条件: `pk` が存在しない)
-3. 409 エラー (ConditionalCheckFailedException) の場合はリポジトリ重複を返す
-
----
-
-### GET `/repos/{owner}/{repo}`
-
-特定リポジトリの詳細を取得する。
-
-**レスポンス (200 OK):**
-
-```json
-{
-  "owner": "myorg",
-  "repo": "myrepo",
-  "s3_prefix": "objects/myorg/myrepo/",
-  "status": "active",
-  "created_at": "2024-01-15T10:00:00Z",
-  "updated_at": "2024-01-15T10:00:00Z",
-  "description": "My large file repository"
-}
-```
-
-**エラーレスポンス:**
-
-| コード | 説明 |
-|---|---|
-| 404 | リポジトリが存在しない |
-
----
+Lambda: **repo-delete-initiator** (削除)
 
 ### DELETE `/repos/{owner}/{repo}`
 
-リポジトリとそれに属するすべての S3 オブジェクトを削除する。
+リポジトリに属するすべての S3 オブジェクトを削除する。
 
 **レスポンス (202 Accepted):**
 
@@ -285,24 +167,20 @@ Lambda: **repo-manager** (一覧・登録) / **repo-delete-initiator** (削除)
 {
   "message": "Deletion started. This operation may take some time.",
   "owner": "myorg",
-  "repo": "myrepo",
-  "status": "deleting"
+  "repo": "myrepo"
 }
 ```
 
-> **202 Accepted**: S3 の削除は非同期で実行されるため、リクエスト受付時点で 202 を返す。完了確認は `GET /repos/{owner}/{repo}` でステータスを確認する（`status = deleting` → レコード消滅 = 削除完了）。
+> **202 Accepted**: S3 の削除は非同期で実行されるため、リクエスト受付時点で 202 を返す。
 
 **エラーレスポンス:**
 
 | コード | 説明 |
 |---|---|
-| 404 | リポジトリが存在しない |
-| 409 | 既に削除処理中 |
+| 422 | パスパラメータが不正 |
 
 **処理フロー (repo-delete-initiator):**
-1. DynamoDB でリポジトリ確認
-2. DynamoDB でステータスを `deleting` に更新 (条件: `status = active`)
-3. SQS に削除ジョブメッセージを送信
+1. SQS に削除ジョブメッセージを送信
 
 ```json
 {
@@ -313,14 +191,14 @@ Lambda: **repo-manager** (一覧・登録) / **repo-delete-initiator** (削除)
 }
 ```
 
-4. 202 Accepted を返す
+2. 202 Accepted を返す
 
 **処理フロー (repo-delete-worker):**
 1. SQS メッセージから削除ジョブを受信
 2. S3 `ListObjectsV2` (`Prefix = s3_prefix`, `ContinuationToken` を利用)
 3. 取得した最大 1000 件を `DeleteObjects` でバッチ削除
 4. `IsTruncated = true` の場合: SQS に継続メッセージを送信
-5. `IsTruncated = false` の場合: DynamoDB からレコードを削除
+5. `IsTruncated = false` の場合: 削除完了
 6. エラー時: SQS の可視性タイムアウトを延長 or DLQ に移動
 
 ---
@@ -331,9 +209,6 @@ Lambda: **repo-manager** (一覧・登録) / **repo-delete-initiator** (削除)
 |---|---|---|---|
 | `POST` | `/repos/{owner}/{repo}/info/lfs/objects/batch` | lfs-handler | LFS Batch API |
 | `POST` | `/repos/{owner}/{repo}/info/lfs/objects/verify` | lfs-handler | LFS アップロード検証 |
-| `GET` | `/repos` | repo-manager | リポジトリ一覧取得 |
-| `POST` | `/repos` | repo-manager | リポジトリ登録 |
-| `GET` | `/repos/{owner}/{repo}` | repo-manager | リポジトリ詳細取得 |
 | `DELETE` | `/repos/{owner}/{repo}` | repo-delete-initiator | リポジトリ削除（非同期） |
 
 ---
@@ -350,11 +225,6 @@ Lambda: **repo-manager** (一覧・登録) / **repo-delete-initiator** (削除)
       "Effect": "Allow",
       "Action": ["s3:GetObject", "s3:PutObject", "s3:HeadObject"],
       "Resource": "arn:aws:s3:::*-git-lfs-objects/objects/*"
-    },
-    {
-      "Effect": "Allow",
-      "Action": ["dynamodb:GetItem"],
-      "Resource": "arn:aws:dynamodb:*:*:table/git-lfs-repositories"
     }
   ]
 }
@@ -378,11 +248,6 @@ Lambda: **repo-manager** (一覧・登録) / **repo-delete-initiator** (削除)
       "Effect": "Allow",
       "Action": ["s3:DeleteObject"],
       "Resource": "arn:aws:s3:::*-git-lfs-objects/objects/*"
-    },
-    {
-      "Effect": "Allow",
-      "Action": ["dynamodb:DeleteItem", "dynamodb:UpdateItem"],
-      "Resource": "arn:aws:dynamodb:*:*:table/git-lfs-repositories"
     },
     {
       "Effect": "Allow",

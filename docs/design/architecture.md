@@ -20,7 +20,6 @@ git push/pull
     │  POST /info/lfs/objects/batch
     ▼
 [Lambda: LFS Handler]  ───────────────────────────────────┐
-    │  DynamoDB: リポジトリ確認                             │
     │  S3: presigned URL 生成                               │
     ▼                                                       │
 [レスポンス: presigned URL]                                │
@@ -43,7 +42,6 @@ git push/pull
 | Lambda 関数 | 役割 | 理由 |
 |---|---|---|
 | **lfs-handler** | LFS Batch API、presigned URL 生成 | 高頻度・低レイテンシが求められる |
-| **repo-manager** | リポジトリ一覧取得・登録 | CRUD 操作、管理用途 |
 | **repo-delete-initiator** | 削除ジョブの起動 | 同期的に完了できないため非同期化 |
 | **repo-delete-worker** | S3 オブジェクトの一括削除 | タイムアウト対策のバッチ処理 |
 
@@ -58,7 +56,6 @@ git push/pull
     ▼
 [API Gateway]
     ├── /repos/{owner}/{repo}/info/lfs/*  → lfs-handler Lambda
-    ├── /repos                             → repo-manager Lambda
     └── /repos/{owner}/{repo}  (DELETE)   → repo-delete-initiator Lambda
                                                     │
                                                     │ SQS メッセージ
@@ -68,9 +65,8 @@ git push/pull
                                                     ▼
                                            repo-delete-worker Lambda
                                                     │
-                                      ┌─────────────┤
-                                      ▼             ▼
-                                    [S3]       [DynamoDB]
+                                                    ▼
+                                                  [S3]
 ```
 
 ---
@@ -116,10 +112,8 @@ DELETE /repos/{owner}/{repo}
     │
     ▼
 repo-delete-initiator Lambda
-    │ 1. DynamoDB でリポジトリの存在確認
-    │ 2. DynamoDB で status = "deleting" に更新
-    │ 3. SQS に削除ジョブメッセージを送信
-    │ 4. 202 Accepted を即時返却
+    │ 1. SQS に削除ジョブメッセージを送信
+    │ 2. 202 Accepted を即時返却
     ▼
 SQS Queue (lfs-delete)
     │ VisibilityTimeout: 900秒 (15分)
@@ -128,7 +122,7 @@ repo-delete-worker Lambda
     │ 1. S3 ListObjectsV2 でオブジェクト一覧取得 (最大1000件/回)
     │ 2. S3 DeleteObjects でバッチ削除 (最大1000件/回)
     │ 3. 次ページがある場合: 新たな SQS メッセージを送信して継続
-    │ 4. 全削除完了後: DynamoDB からレコードを削除
+    │ 4. 全削除完了
     └── エラー時: SQS デッドレターキュー (DLQ) に移動
 ```
 
@@ -141,8 +135,7 @@ repo-delete-worker Lambda
 ### 必要な AWS リソース
 
 - API Gateway (HTTP API または REST API)
-- Lambda × 4 (lfs-handler, repo-manager, repo-delete-initiator, repo-delete-worker)
+- Lambda × 3 (lfs-handler, repo-delete-initiator, repo-delete-worker)
 - S3 Bucket × 1 (LFS オブジェクト格納)
-- DynamoDB Table × 1 (リポジトリ管理)
 - SQS Queue × 1 + DLQ × 1 (非同期削除)
 - IAM Role (Lambda 実行用、最小権限原則)
