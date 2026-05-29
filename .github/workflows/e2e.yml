@@ -28,10 +28,12 @@ jobs:
         run: pip install cargo-lambda
 
       - name: Start LocalStack
-        uses: LocalStack/setup-localstack@v0.2.3
+        uses: LocalStack/setup-localstack@v0.3.2
         with:
-          image-tag: "3"
-          auth-token: ${{ secrets.LOCALSTACK_AUTH_TOKEN }}
+          image-tag: 'latest'
+          install-awslocal: 'true'
+        env:
+          LOCALSTACK_AUTH_TOKEN: ${{ secrets.LOCALSTACK_AUTH_TOKEN }}
 
       - name: Build Lambda
         run: cargo lambda build
