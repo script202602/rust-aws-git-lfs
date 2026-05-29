@@ -102,55 +102,127 @@ aws --endpoint-url=http://localhost:4566 s3 ls s3://test-lfs-bucket/objects/
 
 ---
 
-## AWS デプロイ
+## AWS デプロイ（Terraform）
 
-### 最小構成でのデプロイ手順
+S3・Lambda・API Gateway・オーソライザーをまとめて構築します。
 
-**1. S3 バケットの作成**
+### 1. Terraform のインストール
+
+**macOS**
 
 ```bash
-aws s3api create-bucket \
-  --bucket my-lfs-bucket \
-  --region ap-northeast-1 \
-  --create-bucket-configuration LocationConstraint=ap-northeast-1
+brew tap hashicorp/tap
+brew install hashicorp/tap/terraform
 ```
 
-**2. Lambda 関数のビルドとデプロイ**
+**Linux**
+
+```bash
+sudo apt-get update && sudo apt-get install -y gnupg software-properties-common
+wget -O- https://apt.releases.hashicorp.com/gpg | gpg --dearmor | sudo tee /usr/share/keyrings/hashicorp-archive-keyring.gpg
+echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/hashicorp.list
+sudo apt-get update && sudo apt-get install terraform
+```
+
+**Windows**
+
+```powershell
+choco install terraform
+```
+
+インストール確認：
+
+```bash
+terraform -version
+```
+
+### 2. AWS 認証情報の確認
+
+```bash
+# 通常の場合（~/.aws/credentials に静的キーがある場合）
+aws sts get-caller-identity
+
+# AWS SSO や credential_process を使っている場合は環境変数にエクスポート
+eval $(aws configure export-credentials --format env)
+```
+
+### 3. 変数ファイルの作成
+
+```bash
+cp terraform/terraform.tfvars.example terraform/terraform.tfvars
+```
+
+`terraform/terraform.tfvars` を編集してバケット名を設定します（グローバルで一意な名前にしてください）：
+
+```hcl
+bucket_name   = "my-lfs-bucket-yourname"
+region        = "ap-northeast-1"
+function_name = "rust-aws-lfs"
+```
+
+### 4. Lambda バイナリのビルド
+
+Terraform の前に Lambda バイナリをビルドしておく必要があります：
 
 ```bash
 cargo lambda build --release
-
-cargo lambda deploy \
-  --env-var S3_BUCKET=my-lfs-bucket \
-  --env-var LFS_BASE_URL=https://xxxx.execute-api.ap-northeast-1.amazonaws.com
 ```
 
-> `LFS_BASE_URL` はデプロイ後に API Gateway のエンドポイント URL に更新してください。
-
-**3. Lambda に S3 アクセス権限を付与**
-
-デプロイで作成された IAM ロール (`rust-aws-lfs-role` など) に以下のポリシーをアタッチします。
+### 5. Terraform でインフラを構築
 
 ```bash
-aws iam put-role-policy \
-  --role-name rust-aws-lfs-role \
-  --policy-name lfs-s3-access \
-  --policy-document '{
-    "Version": "2012-10-17",
-    "Statement": [{
-      "Effect": "Allow",
-      "Action": ["s3:GetObject", "s3:PutObject", "s3:HeadObject"],
-      "Resource": "arn:aws:s3:::my-lfs-bucket/objects/*"
-    }]
-  }'
+cd terraform
+terraform init       # プロバイダーをダウンロード（初回のみ）
+terraform plan       # 変更内容を確認
+terraform apply      # 実際に構築
 ```
 
-**4. 動作確認**
+`apply` 完了後、エンドポイント URL が表示されます：
 
-デプロイ後、API Gateway の URL に対して上記の curl コマンドの `http://localhost:9000/2015-03-31/functions/rust-aws-lfs/invocations` を実際のエンドポイント URL に置き換えて実行できます。
+```
+Outputs:
+
+lfs_base_url      = "https://xxxxxxxxxx.execute-api.ap-northeast-1.amazonaws.com"
+lfs_url_example   = "https://xxxxxxxxxx.execute-api.ap-northeast-1.amazonaws.com/<github-owner>/<github-repo>/info/lfs"
+```
+
+### 6. git-lfs の設定
+
+出力された URL を使って設定します：
 
 ```bash
-curl -s -X POST https://xxxx.execute-api.ap-northeast-1.amazonaws.com/repos/owner/repo/info/lfs/objects/batch \
+git config lfs.url https://<API_ID>.execute-api.ap-northeast-1.amazonaws.com/<github-owner>/<github-repo>/info/lfs
+```
+
+`git lfs push` / `git lfs pull` の初回実行時に認証プロンプトが表示されます：
+
+```
+Username: <GitHub ユーザー名>
+Password: <GitHub Personal Access Token（repo スコープ）>
+```
+
+> GitHub の Personal Access Token は [Settings → Developer settings → Personal access tokens](https://github.com/settings/tokens) で `repo` スコープを付けて発行してください。
+
+### 7. 動作確認
+
+```bash
+curl -s -u <github-username>:<github-pat> \
+  -X POST https://<API_ID>.execute-api.ap-northeast-1.amazonaws.com/<github-owner>/<github-repo>/info/lfs/objects/batch \
   -H 'Content-Type: application/vnd.git-lfs+json' \
   -d '{"operation":"upload","objects":[{"oid":"4d7af9c6...","size":1024}]}'
 ```
+
+### Lambda の更新（コード変更時）
+
+```bash
+cargo lambda build --release
+cd terraform && terraform apply
+```
+
+### インフラの削除
+
+```bash
+cd terraform && terraform destroy
+```
+
+> **注意:** S3 バケットにオブジェクトが残っている場合は `terraform destroy` が失敗します。先に `aws s3 rm s3://<bucket-name> --recursive` で空にしてください。

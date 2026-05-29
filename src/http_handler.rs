@@ -1,6 +1,6 @@
 use aws_sdk_s3::presigning::PresigningConfig;
 use aws_sdk_s3::Client as S3Client;
-use lambda_http::{Body, Error, Request, Response};
+use lambda_http::{tracing, Body, Error, Request, Response};
 use serde::Deserialize;
 use serde_json::json;
 use std::time::Duration;
@@ -42,20 +42,19 @@ fn lfs_error(status: u16, message: &str) -> Result<Response<Body>, Error> {
 }
 
 fn parse_lfs_path(path: &str) -> Option<(String, String, String)> {
-    // Expected: /repos/{owner}/{repo}/info/lfs/objects/{endpoint}
-    // Allow an optional leading stage segment (e.g. /prod/repos/... or /local/repos/...)
+    // lfs.url = https://host/{owner}/{repo}/info/lfs
+    // git-lfs posts to {lfs-url}/objects/{endpoint}, so the path is:
+    // /{owner}/{repo}/info/lfs/objects/{endpoint}
     let parts: Vec<&str> = path.trim_start_matches('/').split('/').collect();
-    let start = parts.iter().position(|&s| s == "repos")?;
-    let parts = &parts[start..];
-    if parts.len() == 7
-        && parts[3] == "info"
-        && parts[4] == "lfs"
-        && parts[5] == "objects"
+    if parts.len() == 6
+        && parts[2] == "info"
+        && parts[3] == "lfs"
+        && parts[4] == "objects"
     {
         Some((
+            parts[0].to_string(),
             parts[1].to_string(),
-            parts[2].to_string(),
-            parts[6].to_string(),
+            parts[5].to_string(),
         ))
     } else {
         None
@@ -94,7 +93,7 @@ async fn handle_batch(
     }
 
     let base_url = std::env::var("LFS_BASE_URL").unwrap_or_default();
-    let verify_href = format!("{base_url}/repos/{owner}/{repo}/info/lfs/objects/verify");
+    let verify_href = format!("{base_url}/{owner}/{repo}/info/lfs/objects/verify");
     let mut result_objects = Vec::new();
 
     for obj in &req.objects {
@@ -241,6 +240,7 @@ pub(crate) async fn function_handler(
     bucket: &str,
 ) -> Result<Response<Body>, Error> {
     let path = event.uri().path().to_string();
+    tracing::info!(method = %event.method(), path = %path, "incoming request");
 
     if let Some((owner, repo, endpoint)) = parse_lfs_path(&path) {
         if event.method().as_str() == "POST" {
@@ -277,7 +277,7 @@ mod tests {
 
     #[test]
     fn test_parse_lfs_path_batch() {
-        let result = parse_lfs_path("/repos/myorg/myrepo/info/lfs/objects/batch");
+        let result = parse_lfs_path("/myorg/myrepo/info/lfs/objects/batch");
         assert_eq!(
             result,
             Some(("myorg".to_string(), "myrepo".to_string(), "batch".to_string()))
@@ -286,7 +286,7 @@ mod tests {
 
     #[test]
     fn test_parse_lfs_path_verify() {
-        let result = parse_lfs_path("/repos/myorg/myrepo/info/lfs/objects/verify");
+        let result = parse_lfs_path("/myorg/myrepo/info/lfs/objects/verify");
         assert_eq!(
             result,
             Some(("myorg".to_string(), "myrepo".to_string(), "verify".to_string()))
@@ -297,8 +297,8 @@ mod tests {
     fn test_parse_lfs_path_invalid() {
         assert_eq!(parse_lfs_path("/"), None);
         assert_eq!(parse_lfs_path(""), None);
-        assert_eq!(parse_lfs_path("/repos/owner/repo"), None);
-        assert_eq!(parse_lfs_path("/repos/owner/repo/info/lfs/objects"), None);
+        assert_eq!(parse_lfs_path("/owner/repo"), None);
+        assert_eq!(parse_lfs_path("/owner/repo/info/lfs/objects"), None);
         assert_eq!(parse_lfs_path("/other/path"), None);
     }
 
@@ -315,7 +315,7 @@ mod tests {
         let s3 = test_s3_client();
         let request = lambda_http::http::Request::builder()
             .method(Method::GET)
-            .uri(Uri::from_static("/repos/owner/repo/info/lfs/objects/batch"))
+            .uri(Uri::from_static("/owner/repo/info/lfs/objects/batch"))
             .body(Body::Empty)
             .unwrap();
         let response = function_handler(request, &s3, "test-bucket").await.unwrap();
@@ -326,7 +326,7 @@ mod tests {
     async fn test_batch_invalid_json_returns_422() {
         let s3 = test_s3_client();
         let request = post_request(
-            "/repos/owner/repo/info/lfs/objects/batch",
+            "/owner/repo/info/lfs/objects/batch",
             Body::Text("not json".to_string()),
         );
         let response = function_handler(request, &s3, "test-bucket").await.unwrap();
@@ -338,7 +338,7 @@ mod tests {
         let s3 = test_s3_client();
         let body = r#"{"operation":"delete","objects":[{"oid":"abc","size":100}]}"#;
         let request = post_request(
-            "/repos/owner/repo/info/lfs/objects/batch",
+            "/owner/repo/info/lfs/objects/batch",
             Body::Text(body.to_string()),
         );
         let response = function_handler(request, &s3, "test-bucket").await.unwrap();
@@ -349,7 +349,7 @@ mod tests {
     async fn test_verify_invalid_json_returns_422() {
         let s3 = test_s3_client();
         let request = post_request(
-            "/repos/owner/repo/info/lfs/objects/verify",
+            "/owner/repo/info/lfs/objects/verify",
             Body::Text("not json".to_string()),
         );
         let response = function_handler(request, &s3, "test-bucket").await.unwrap();
