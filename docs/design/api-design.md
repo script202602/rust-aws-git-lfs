@@ -99,10 +99,6 @@ Git LFS Batch API。アップロードまたはダウンロード用の presigne
           "href": "https://s3.amazonaws.com/bucket/objects/owner/repo/4d7af9c6e8b123456...?X-Amz-...",
           "expires_in": 3600
         },
-        "verify": {
-          "href": "https://{api-gateway}/repos/{owner}/{repo}/info/lfs/objects/verify",
-          "expires_in": 3600
-        }
       }
     }
   ],
@@ -124,32 +120,6 @@ Git LFS Batch API。アップロードまたはダウンロード用の presigne
    - S3 で OID の存在確認 (HeadObject)
    - 存在する場合のみ presigned GET URL を生成 (有効期限: 3600 秒)
    - 存在しない場合は `error.code = 404` をオブジェクトレベルで返す
-
----
-
-### POST `/repos/{owner}/{repo}/info/lfs/objects/verify`
-
-アップロード完了後の検証エンドポイント。git-lfs クライアントがアップロード後に呼び出す。
-
-**リクエストボディ:**
-
-```json
-{
-  "oid": "4d7af9c6e8b123456789abcdef1234567890abcdef1234567890abcdef12345678",
-  "size": 1048576
-}
-```
-
-**レスポンス (200 OK):**
-
-```json
-{}
-```
-
-**処理フロー:**
-1. S3 で OID の HeadObject を実行
-2. サイズが一致するか確認
-3. 一致しない場合は 422 を返す
 
 ---
 
@@ -208,7 +178,6 @@ Lambda: **repo-delete-initiator** (削除)
 | メソッド | パス | Lambda | 説明 |
 |---|---|---|---|
 | `POST` | `/repos/{owner}/{repo}/info/lfs/objects/batch` | lfs-handler | LFS Batch API |
-| `POST` | `/repos/{owner}/{repo}/info/lfs/objects/verify` | lfs-handler | LFS アップロード検証 |
 | `DELETE` | `/repos/{owner}/{repo}` | repo-delete-initiator | リポジトリ削除（非同期） |
 
 ---

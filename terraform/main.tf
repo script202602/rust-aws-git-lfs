@@ -114,19 +114,19 @@ data "archive_file" "authorizer" {
 }
 
 resource "aws_lambda_function" "main" {
-  function_name    = var.function_name
-  role             = aws_iam_role.main.arn
-  filename         = data.archive_file.main.output_path
-  source_code_hash = data.archive_file.main.output_base64sha256
-  handler          = "bootstrap"
-  runtime          = "provided.al2023"
-  timeout          = 30
-  memory_size      = 128
+  function_name                  = var.function_name
+  role                           = aws_iam_role.main.arn
+  filename                       = data.archive_file.main.output_path
+  source_code_hash               = data.archive_file.main.output_base64sha256
+  handler                        = "bootstrap"
+  runtime                        = "provided.al2023"
+  timeout                        = 30
+  memory_size                    = 128
+  reserved_concurrent_executions = var.lambda_reserved_concurrency
 
   environment {
     variables = {
       S3_BUCKET               = aws_s3_bucket.lfs.bucket
-      LFS_BASE_URL            = "https://${aws_apigatewayv2_api.main.id}.execute-api.${var.region}.amazonaws.com"
       CLOUDFRONT_DOMAIN       = aws_cloudfront_distribution.lfs.domain_name
       CLOUDFRONT_KEY_PAIR_ID  = aws_cloudfront_public_key.lfs.id
       CLOUDFRONT_PRIVATE_KEY  = var.cloudfront_private_key_pem
@@ -136,14 +136,15 @@ resource "aws_lambda_function" "main" {
 }
 
 resource "aws_lambda_function" "authorizer" {
-  function_name    = "${var.function_name}-authorizer"
-  role             = aws_iam_role.authorizer.arn
-  filename         = data.archive_file.authorizer.output_path
-  source_code_hash = data.archive_file.authorizer.output_base64sha256
-  handler          = "bootstrap"
-  runtime          = "provided.al2023"
-  timeout          = 10
-  memory_size      = 128
+  function_name                  = "${var.function_name}-authorizer"
+  role                           = aws_iam_role.authorizer.arn
+  filename                       = data.archive_file.authorizer.output_path
+  source_code_hash               = data.archive_file.authorizer.output_base64sha256
+  handler                        = "bootstrap"
+  runtime                        = "provided.al2023"
+  timeout                        = 10
+  memory_size                    = 128
+  reserved_concurrent_executions = var.lambda_reserved_concurrency
 }
 
 # ── API Gateway ───────────────────────────────────────────────────────────────
@@ -215,6 +216,10 @@ resource "aws_cloudfront_origin_access_control" "lfs" {
 resource "aws_cloudfront_public_key" "lfs" {
   name        = "${var.function_name}-cf-pubkey"
   encoded_key = var.cloudfront_public_key_pem
+
+  lifecycle {
+    ignore_changes = [encoded_key]
+  }
 }
 
 resource "aws_cloudfront_key_group" "lfs" {

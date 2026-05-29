@@ -31,3 +31,9 @@ variable "cloudfront_signed_url_ttl_secs" {
   type        = number
   default     = 3600
 }
+
+variable "lambda_reserved_concurrency" {
+  description = "Lambda 関数の最大同時実行数（コスト上限対策）。-1 で無制限"
+  type        = number
+  default     = -1
+}

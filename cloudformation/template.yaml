@@ -1,0 +1,374 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  rust-aws-git-lfs — Git LFS server (Lambda + S3 + API Gateway + CloudFront).
+  RSA キーペアはスタック作成時に自動生成されます。
+
+# ────────────────────────────────────────────────────────────────────────────
+# パラメータ（入力が必要な値）
+# ────────────────────────────────────────────────────────────────────────────
+Parameters:
+
+  LFSBucketName:
+    Type: String
+    Description: >
+      LFS オブジェクトを格納する S3 バケット名。
+      全世界で一意な名前にしてください（例: my-lfs-bucket-yourname）。
+
+  ArtifactsBucketName:
+    Type: String
+    Description: >
+      ビルド済み Lambda ZIP が格納されている S3 バケット名。
+      事前に rust-aws-lfs.zip と rust-aws-lfs-authorizer.zip をアップロードしてください。
+
+  MainFunctionS3Key:
+    Type: String
+    Default: rust-aws-lfs.zip
+    Description: メイン Lambda ZIP の S3 オブジェクトキー
+
+  AuthorizerFunctionS3Key:
+    Type: String
+    Default: rust-aws-lfs-authorizer.zip
+    Description: オーソライザー Lambda ZIP の S3 オブジェクトキー
+
+  CloudFrontSignedUrlTTL:
+    Type: Number
+    Default: 3600
+    Description: CloudFront Signed URL の有効期限（秒）
+
+# ────────────────────────────────────────────────────────────────────────────
+# リソース
+# ────────────────────────────────────────────────────────────────────────────
+Resources:
+
+  # ── RSA キーペア自動生成（カスタムリソース） ──────────────────────────────
+
+  RSAKeyGenRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: SSMAccess
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: [ssm:PutParameter, ssm:GetParameter, ssm:DeleteParameter]
+                Resource: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/rust-aws-lfs/*"
+
+  RSAKeyGenFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Runtime: python3.12
+      Handler: index.handler
+      Role: !GetAtt RSAKeyGenRole.Arn
+      Timeout: 60
+      Code:
+        ZipFile: |
+          import json, os, subprocess, tempfile, urllib.request, boto3
+
+          PRIV = '/rust-aws-lfs/cf-private-key'
+          PUB  = '/rust-aws-lfs/cf-public-key'
+
+          def respond(event, context, status, data=None, reason=None):
+              body = json.dumps({
+                  'Status': status,
+                  'Reason': reason or context.log_stream_name,
+                  'PhysicalResourceId': event.get('PhysicalResourceId', context.log_stream_name),
+                  'StackId': event['StackId'],
+                  'RequestId': event['RequestId'],
+                  'LogicalResourceId': event['LogicalResourceId'],
+                  'Data': data or {}
+              }).encode()
+              req = urllib.request.Request(
+                  event['ResponseURL'], data=body,
+                  headers={'Content-Type': ''}, method='PUT')
+              urllib.request.urlopen(req)
+
+          def handler(event, context):
+              ssm = boto3.client('ssm')
+              try:
+                  if event['RequestType'] == 'Delete':
+                      for p in [PRIV, PUB]:
+                          try: ssm.delete_parameter(Name=p)
+                          except: pass
+                      respond(event, context, 'SUCCESS')
+                      return
+
+                  if event['RequestType'] == 'Update':
+                      priv = ssm.get_parameter(Name=PRIV, WithDecryption=True)['Parameter']['Value']
+                      pub  = ssm.get_parameter(Name=PUB)['Parameter']['Value']
+                      respond(event, context, 'SUCCESS', {'PrivateKeyPem': priv, 'PublicKeyPem': pub})
+                      return
+
+                  # Create: openssl で PKCS#8 RSA キーペアを生成
+                  with tempfile.TemporaryDirectory() as d:
+                      priv_path = os.path.join(d, 'private.pem')
+                      pub_path  = os.path.join(d, 'public.pem')
+                      subprocess.run(
+                          ['openssl', 'genpkey', '-algorithm', 'RSA',
+                           '-pkeyopt', 'rsa_keygen_bits:2048', '-out', priv_path],
+                          check=True, capture_output=True)
+                      subprocess.run(
+                          ['openssl', 'rsa', '-pubout', '-in', priv_path, '-out', pub_path],
+                          check=True, capture_output=True)
+                      priv = open(priv_path).read()
+                      pub  = open(pub_path).read()
+
+                  ssm.put_parameter(Name=PRIV, Value=priv, Type='SecureString', Overwrite=True)
+                  ssm.put_parameter(Name=PUB,  Value=pub,  Type='String',       Overwrite=True)
+                  respond(event, context, 'SUCCESS', {'PrivateKeyPem': priv, 'PublicKeyPem': pub})
+              except Exception as e:
+                  import traceback
+                  respond(event, context, 'FAILED', reason=traceback.format_exc())
+
+  RSAKeyPair:
+    Type: AWS::CloudFormation::CustomResource
+    Properties:
+      ServiceToken: !GetAtt RSAKeyGenFunction.Arn
+
+  # ── S3 ───────────────────────────────────────────────────────────────────
+
+  LFSBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref LFSBucketName
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  # ── IAM ──────────────────────────────────────────────────────────────────
+
+  MainLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${AWS::StackName}-main-role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: S3LFSAccess
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: [s3:GetObject, s3:PutObject, s3:HeadObject]
+                Resource: !Sub "arn:aws:s3:::${LFSBucketName}/objects/*"
+
+  AuthorizerLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${AWS::StackName}-authorizer-role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+
+  # ── Lambda ───────────────────────────────────────────────────────────────
+
+  AuthorizerFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-authorizer"
+      Runtime: provided.al2023
+      Handler: bootstrap
+      Role: !GetAtt AuthorizerLambdaRole.Arn
+      Timeout: 10
+      MemorySize: 128
+      Code:
+        S3Bucket: !Ref ArtifactsBucketName
+        S3Key: !Ref AuthorizerFunctionS3Key
+
+  HttpApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: !Ref AWS::StackName
+      ProtocolType: HTTP
+
+  HttpApiStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref HttpApi
+      StageName: "$default"
+      AutoDeploy: true
+
+  CloudFrontOAC:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub "${AWS::StackName}-oac"
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  CloudFrontPublicKey:
+    Type: AWS::CloudFront::PublicKey
+    Properties:
+      PublicKeyConfig:
+        CallerReference: !Sub "${AWS::StackName}-pubkey-v1"
+        Name: !Sub "${AWS::StackName}-cf-pubkey"
+        EncodedKey: !GetAtt RSAKeyPair.PublicKeyPem
+
+  CloudFrontKeyGroup:
+    Type: AWS::CloudFront::KeyGroup
+    Properties:
+      KeyGroupConfig:
+        Name: !Sub "${AWS::StackName}-key-group"
+        Items:
+          - !Ref CloudFrontPublicKey
+
+  CloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        IPV6Enabled: true
+        Comment: !Sub "${AWS::StackName} Git LFS object cache"
+        Origins:
+          - DomainName: !GetAtt LFSBucket.RegionalDomainName
+            Id: s3-lfs-origin
+            OriginAccessControlId: !GetAtt CloudFrontOAC.Id
+            S3OriginConfig:
+              OriginAccessIdentity: ""
+        DefaultCacheBehavior:
+          AllowedMethods: [GET, HEAD]
+          CachedMethods: [GET, HEAD]
+          TargetOriginId: s3-lfs-origin
+          ViewerProtocolPolicy: https-only
+          TrustedKeyGroups:
+            - !Ref CloudFrontKeyGroup
+          ForwardedValues:
+            QueryString: false
+            Cookies: { Forward: none }
+          MinTTL: 0
+          DefaultTTL: !Ref CloudFrontSignedUrlTTL
+          MaxTTL: 86400
+        Restrictions:
+          GeoRestriction: { RestrictionType: none }
+        ViewerCertificate:
+          CloudFrontDefaultCertificate: true
+
+  # メイン Lambda は CloudFront の情報が確定してから作成
+  MainFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: HttpApiStage
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-main"
+      Runtime: provided.al2023
+      Handler: bootstrap
+      Role: !GetAtt MainLambdaRole.Arn
+      Timeout: 30
+      MemorySize: 128
+      Code:
+        S3Bucket: !Ref ArtifactsBucketName
+        S3Key: !Ref MainFunctionS3Key
+      Environment:
+        Variables:
+          S3_BUCKET: !Ref LFSBucketName
+          CLOUDFRONT_DOMAIN: !GetAtt CloudFrontDistribution.DomainName
+          CLOUDFRONT_KEY_PAIR_ID: !Ref CloudFrontPublicKey
+          CLOUDFRONT_PRIVATE_KEY: !GetAtt RSAKeyPair.PrivateKeyPem
+          CLOUDFRONT_URL_TTL_SECS: !Sub "${CloudFrontSignedUrlTTL}"
+
+  # ── API Gateway ──────────────────────────────────────────────────────────
+
+  LambdaIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref HttpApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Sub
+        - "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${FnArn}/invocations"
+        - FnArn: !GetAtt MainFunction.Arn
+      PayloadFormatVersion: "2.0"
+
+  LambdaAuthorizer:
+    Type: AWS::ApiGatewayV2::Authorizer
+    Properties:
+      ApiId: !Ref HttpApi
+      AuthorizerType: REQUEST
+      IdentitySources: ["$request.header.authorization"]
+      Name: github-auth
+      AuthorizerUri: !Sub
+        - "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${FnArn}/invocations"
+        - FnArn: !GetAtt AuthorizerFunction.Arn
+      AuthorizerPayloadFormatVersion: "2.0"
+      EnableSimpleResponses: true
+      AuthorizerResultTtlInSeconds: 300
+
+  ApiRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: "ANY /{proxy+}"
+      Target: !Sub "integrations/${LambdaIntegration}"
+      AuthorizationType: CUSTOM
+      AuthorizerId: !Ref LambdaAuthorizer
+
+  MainLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt MainFunction.Arn
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/{proxy+}"
+
+  AuthorizerLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt AuthorizerFunction.Arn
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/authorizers/*"
+
+  # ── S3 バケットポリシー（CloudFront 作成後に設定） ────────────────────────
+
+  LFSBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref LFSBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AllowCloudFrontOAC
+            Effect: Allow
+            Principal: { Service: cloudfront.amazonaws.com }
+            Action: s3:GetObject
+            Resource: !Sub "${LFSBucket.Arn}/*"
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub "arn:aws:cloudfront::${AWS::AccountId}:distribution/${CloudFrontDistribution}"
+
+# ────────────────────────────────────────────────────────────────────────────
+# 出力（スタック作成完了後に表示される値）
+# ────────────────────────────────────────────────────────────────────────────
+Outputs:
+
+  LFSBaseUrl:
+    Description: API Gateway エンドポイント URL
+    Value: !Sub "https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com"
+
+  CloudFrontDomain:
+    Description: CloudFront ドメイン名
+    Value: !GetAtt CloudFrontDistribution.DomainName
+
+  LFSUrlExample:
+    Description: "git lfs の設定 URL 例（<owner>/<repo> を置き換えてください）"
+    Value: !Sub "https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com/<owner>/<repo>/info/lfs"

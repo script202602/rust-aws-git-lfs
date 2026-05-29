@@ -95,8 +95,6 @@ async fn handle_batch(
         return lfs_error(422, "Invalid operation: must be 'upload' or 'download'");
     }
 
-    let base_url = std::env::var("LFS_BASE_URL").unwrap_or_default();
-    let verify_href = format!("{base_url}/{owner}/{repo}/info/lfs/objects/verify");
     let mut result_objects = Vec::new();
 
     for obj in &req.objects {
@@ -133,10 +131,6 @@ async fn handle_batch(
                         "actions": {
                             "upload": {
                                 "href": presigned.uri().to_string(),
-                                "expires_in": PRESIGNED_URL_EXPIRY_SECS
-                            },
-                            "verify": {
-                                "href": verify_href,
                                 "expires_in": PRESIGNED_URL_EXPIRY_SECS
                             }
                         }

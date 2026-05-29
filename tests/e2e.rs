@@ -151,7 +151,7 @@ async fn batch_invalid_operation_returns_422() {
 }
 
 #[tokio::test]
-async fn batch_upload_new_object_has_upload_and_verify_actions() {
+async fn batch_upload_new_object_has_upload_action() {
     seed_s3().await;
     let body = format!(r#"{{"operation":"upload","objects":[{{"oid":"{NEW_OID}","size":100}}]}}"#);
     let resp = invoke(make_event(
@@ -163,7 +163,7 @@ async fn batch_upload_new_object_has_upload_and_verify_actions() {
     assert_eq!(status(&resp), 200);
     let b = body_json(&resp);
     assert!(!b["objects"][0]["actions"]["upload"].is_null(), "upload action missing");
-    assert!(!b["objects"][0]["actions"]["verify"].is_null(), "verify action missing");
+    assert!(b["objects"][0]["actions"]["verify"].is_null(), "verify action should not be present");
 }
 
 #[tokio::test]
@@ -221,53 +221,3 @@ async fn batch_download_missing_object_returns_error_code_404() {
     assert_eq!(b["objects"][0]["error"]["code"], 404);
 }
 
-// ---- Tests: Verify ----
-
-#[tokio::test]
-async fn verify_invalid_json_returns_422() {
-    let resp = invoke(make_event(
-        "POST",
-        "/repos/owner/repo/info/lfs/objects/verify",
-        "not-json",
-    ))
-    .await;
-    assert_eq!(status(&resp), 422);
-}
-
-#[tokio::test]
-async fn verify_correct_object_returns_200() {
-    seed_s3().await;
-    let body = format!(r#"{{"oid":"{EXISTING_OID}","size":{EXISTING_SIZE}}}"#);
-    let resp = invoke(make_event(
-        "POST",
-        "/repos/owner/repo/info/lfs/objects/verify",
-        &body,
-    ))
-    .await;
-    assert_eq!(status(&resp), 200);
-}
-
-#[tokio::test]
-async fn verify_size_mismatch_returns_422() {
-    seed_s3().await;
-    let body = format!(r#"{{"oid":"{EXISTING_OID}","size":9999}}"#);
-    let resp = invoke(make_event(
-        "POST",
-        "/repos/owner/repo/info/lfs/objects/verify",
-        &body,
-    ))
-    .await;
-    assert_eq!(status(&resp), 422);
-}
-
-#[tokio::test]
-async fn verify_missing_object_returns_404() {
-    let body = format!(r#"{{"oid":"{MISSING_OID}","size":100}}"#);
-    let resp = invoke(make_event(
-        "POST",
-        "/repos/owner/repo/info/lfs/objects/verify",
-        &body,
-    ))
-    .await;
-    assert_eq!(status(&resp), 404);
-}
