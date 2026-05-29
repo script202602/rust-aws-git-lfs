@@ -1,0 +1,22 @@
+{
+  "httpMethod": "POST",
+  "path": "/repos/owner/repo/info/lfs/objects/verify",
+  "headers": { "content-type": "application/vnd.git-lfs+json" },
+  "multiValueHeaders": {},
+  "queryStringParameters": null,
+  "multiValueQueryStringParameters": null,
+  "pathParameters": null,
+  "stageVariables": null,
+  "requestContext": {
+    "accountId": "123456789012",
+    "resourceId": "test",
+    "stage": "local",
+    "requestId": "test-request-id",
+    "identity": { "sourceIp": "127.0.0.1" },
+    "resourcePath": "/repos/{owner}/{repo}/info/lfs/objects/verify",
+    "httpMethod": "POST",
+    "apiId": "test"
+  },
+  "body": "{\"oid\":\"4d7af9c6e8b123456789abcdef1234567890abcdef1234567890abcdef12345678\",\"size\":1024}",
+  "isBase64Encoded": false
+}
