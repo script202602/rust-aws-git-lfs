@@ -5,6 +5,8 @@ use serde::Deserialize;
 use serde_json::json;
 use std::time::Duration;
 
+use crate::cloudfront_signer::CloudFrontSigner;
+
 const PRESIGNED_URL_EXPIRY_SECS: u64 = 3600;
 const LFS_CONTENT_TYPE: &str = "application/vnd.git-lfs+json";
 
@@ -81,6 +83,7 @@ async fn handle_batch(
     bucket: &str,
     owner: &str,
     repo: &str,
+    cf_signer: Option<&CloudFrontSigner>,
 ) -> Result<Response<Body>, Error> {
     let body_str = extract_body(event.body());
     let req: BatchRequest = match serde_json::from_str(&body_str) {
@@ -149,12 +152,23 @@ async fn handle_batch(
                     .await
                 {
                     Ok(_) => {
-                        let presigned = s3_client
-                            .get_object()
-                            .bucket(bucket)
-                            .key(&s3_key)
-                            .presigned(presigning_config())
-                            .await?;
+                        let href = if let Some(signer) = cf_signer {
+                            let expires = std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .unwrap()
+                                .as_secs()
+                                + PRESIGNED_URL_EXPIRY_SECS;
+                            signer.sign(&s3_key, expires)
+                        } else {
+                            // LocalStack やユニットテスト時は S3 presigned URL にフォールバック
+                            let presigned = s3_client
+                                .get_object()
+                                .bucket(bucket)
+                                .key(&s3_key)
+                                .presigned(presigning_config())
+                                .await?;
+                            presigned.uri().to_string()
+                        };
 
                         result_objects.push(json!({
                             "oid": obj.oid,
@@ -162,7 +176,7 @@ async fn handle_batch(
                             "authenticated": true,
                             "actions": {
                                 "download": {
-                                    "href": presigned.uri().to_string(),
+                                    "href": href,
                                     "expires_in": PRESIGNED_URL_EXPIRY_SECS
                                 }
                             }
@@ -238,6 +252,7 @@ pub(crate) async fn function_handler(
     event: Request,
     s3_client: &S3Client,
     bucket: &str,
+    cf_signer: Option<&CloudFrontSigner>,
 ) -> Result<Response<Body>, Error> {
     let path = event.uri().path().to_string();
     tracing::info!(method = %event.method(), path = %path, "incoming request");
@@ -245,8 +260,12 @@ pub(crate) async fn function_handler(
     if let Some((owner, repo, endpoint)) = parse_lfs_path(&path) {
         if event.method().as_str() == "POST" {
             match endpoint.as_str() {
-                "batch" => return handle_batch(event, s3_client, bucket, &owner, &repo).await,
-                "verify" => return handle_verify(event, s3_client, bucket, &owner, &repo).await,
+                "batch" => {
+                    return handle_batch(event, s3_client, bucket, &owner, &repo, cf_signer).await
+                }
+                "verify" => {
+                    return handle_verify(event, s3_client, bucket, &owner, &repo).await
+                }
                 _ => {}
             }
         }
@@ -306,7 +325,7 @@ mod tests {
     async fn test_unknown_path_returns_404() {
         let s3 = test_s3_client();
         let request = Request::default();
-        let response = function_handler(request, &s3, "test-bucket").await.unwrap();
+        let response = function_handler(request, &s3, "test-bucket", None).await.unwrap();
         assert_eq!(response.status(), 404);
     }
 
@@ -318,7 +337,7 @@ mod tests {
             .uri(Uri::from_static("/owner/repo/info/lfs/objects/batch"))
             .body(Body::Empty)
             .unwrap();
-        let response = function_handler(request, &s3, "test-bucket").await.unwrap();
+        let response = function_handler(request, &s3, "test-bucket", None).await.unwrap();
         assert_eq!(response.status(), 404);
     }
 
@@ -329,7 +348,7 @@ mod tests {
             "/owner/repo/info/lfs/objects/batch",
             Body::Text("not json".to_string()),
         );
-        let response = function_handler(request, &s3, "test-bucket").await.unwrap();
+        let response = function_handler(request, &s3, "test-bucket", None).await.unwrap();
         assert_eq!(response.status(), 422);
     }
 
@@ -341,7 +360,7 @@ mod tests {
             "/owner/repo/info/lfs/objects/batch",
             Body::Text(body.to_string()),
         );
-        let response = function_handler(request, &s3, "test-bucket").await.unwrap();
+        let response = function_handler(request, &s3, "test-bucket", None).await.unwrap();
         assert_eq!(response.status(), 422);
     }
 
@@ -352,7 +371,7 @@ mod tests {
             "/owner/repo/info/lfs/objects/verify",
             Body::Text("not json".to_string()),
         );
-        let response = function_handler(request, &s3, "test-bucket").await.unwrap();
+        let response = function_handler(request, &s3, "test-bucket", None).await.unwrap();
         assert_eq!(response.status(), 422);
     }
 }

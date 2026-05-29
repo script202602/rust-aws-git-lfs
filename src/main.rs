@@ -1,4 +1,5 @@
 use lambda_http::{run, service_fn, tracing, Error};
+mod cloudfront_signer;
 mod http_handler;
 
 #[tokio::main]
@@ -14,8 +15,11 @@ async fn main() -> Result<(), Error> {
     let s3_client = aws_sdk_s3::Client::from_conf(s3_config);
     let bucket = std::env::var("S3_BUCKET").expect("S3_BUCKET must be set");
 
+    // CloudFront 環境変数が未設定の場合（LocalStack など）は None にフォールバック
+    let cf_signer = cloudfront_signer::CloudFrontSigner::from_env().ok();
+
     run(service_fn(|event| {
-        http_handler::function_handler(event, &s3_client, &bucket)
+        http_handler::function_handler(event, &s3_client, &bucket, cf_signer.as_ref())
     }))
     .await
 }
