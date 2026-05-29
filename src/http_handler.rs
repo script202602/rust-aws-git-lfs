@@ -43,9 +43,11 @@ fn lfs_error(status: u16, message: &str) -> Result<Response<Body>, Error> {
 
 fn parse_lfs_path(path: &str) -> Option<(String, String, String)> {
     // Expected: /repos/{owner}/{repo}/info/lfs/objects/{endpoint}
+    // Allow an optional leading stage segment (e.g. /prod/repos/... or /local/repos/...)
     let parts: Vec<&str> = path.trim_start_matches('/').split('/').collect();
+    let start = parts.iter().position(|&s| s == "repos")?;
+    let parts = &parts[start..];
     if parts.len() == 7
-        && parts[0] == "repos"
         && parts[3] == "info"
         && parts[4] == "lfs"
         && parts[5] == "objects"
@@ -65,6 +67,7 @@ fn extract_body(body: &Body) -> String {
         Body::Text(s) => s.clone(),
         Body::Binary(b) => String::from_utf8(b.clone()).unwrap_or_default(),
         Body::Empty => String::new(),
+        _ => String::new(),
     }
 }
 
