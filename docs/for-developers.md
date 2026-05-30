@@ -194,3 +194,15 @@ cargo lambda watch
 AWS_ACCESS_KEY_ID=test AWS_SECRET_ACCESS_KEY=test \
 aws --endpoint-url=http://localhost:4566 s3 ls s3://test-lfs-bucket/objects/
 ```
+
+---
+
+## GitHub Actions E2E テスト
+
+`.github/workflows/e2e.yml` が pull request ・push 時に自動でE2Eテストを実行します。LocalStack を使うため、以下の設定が必要です。
+
+### LOCALSTACK_AUTH_TOKEN の設定
+
+1. [LocalStack アカウントページ](https://app.localstack.cloud/workspace/auth-token) で無料アカウントを作成し、トークンを取得する
+2. GitHub リポジトリの **Settings → Secrets and variables → Actions** を開く
+3. **New repository secret** から `LOCALSTACK_AUTH_TOKEN` を追加する

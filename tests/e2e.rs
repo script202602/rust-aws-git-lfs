@@ -36,7 +36,7 @@ fn make_event(method: &str, path: &str, body: &str) -> Value {
         "requestContext": {
             "accountId": "123456789012",
             "resourceId": "test",
-            "stage": "local",
+            "stage": null,
             "requestId": "e2e-test",
             "identity": {"sourceIp": "127.0.0.1"},
             "resourcePath": path,
