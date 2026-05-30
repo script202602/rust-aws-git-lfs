@@ -123,6 +123,32 @@ Git LFS Batch API。アップロードまたはダウンロード用の presigne
 
 ---
 
+### POST `/repos/{owner}/{repo}/info/lfs/objects/verify`
+
+アップロード完了後の検証エンドポイント。git-lfs クライアントがアップロード後に呼び出す。
+
+**リクエストボディ:**
+
+```json
+{
+  "oid": "4d7af9c6e8b123456789abcdef1234567890abcdef1234567890abcdef12345678",
+  "size": 1048576
+}
+```
+
+**レスポンス (200 OK):**
+
+```json
+{}
+```
+
+**処理フロー:**
+1. S3 で OID の HeadObject を実行
+2. サイズが一致するか確認
+3. 一致しない場合は 422 を返す
+
+---
+
 ## リポジトリ管理エンドポイント
 
 Lambda: **repo-delete-initiator** (削除)
@@ -178,6 +204,7 @@ Lambda: **repo-delete-initiator** (削除)
 | メソッド | パス | Lambda | 説明 |
 |---|---|---|---|
 | `POST` | `/repos/{owner}/{repo}/info/lfs/objects/batch` | lfs-handler | LFS Batch API |
+| `POST` | `/repos/{owner}/{repo}/info/lfs/objects/verify` | lfs-handler | LFS アップロード検証 |
 | `DELETE` | `/repos/{owner}/{repo}` | repo-delete-initiator | リポジトリ削除（非同期） |
 
 ---

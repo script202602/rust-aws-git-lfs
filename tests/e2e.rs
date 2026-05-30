@@ -36,7 +36,7 @@ fn make_event(method: &str, path: &str, body: &str) -> Value {
         "requestContext": {
             "accountId": "123456789012",
             "resourceId": "test",
-            "stage": "local",
+            "stage": null,
             "requestId": "e2e-test",
             "identity": {"sourceIp": "127.0.0.1"},
             "resourcePath": path,
@@ -116,7 +116,7 @@ async fn routing_wrong_method_returns_404() {
     let body = r#"{"operation":"upload","objects":[{"oid":"abc","size":1}]}"#;
     let resp = invoke(make_event(
         "GET",
-        "/repos/owner/repo/info/lfs/objects/batch",
+        "/owner/repo/info/lfs/objects/batch",
         body,
     ))
     .await;
@@ -129,7 +129,7 @@ async fn routing_wrong_method_returns_404() {
 async fn batch_invalid_json_returns_422() {
     let resp = invoke(make_event(
         "POST",
-        "/repos/owner/repo/info/lfs/objects/batch",
+        "/owner/repo/info/lfs/objects/batch",
         "not-json",
     ))
     .await;
@@ -143,7 +143,7 @@ async fn batch_invalid_operation_returns_422() {
     );
     let resp = invoke(make_event(
         "POST",
-        "/repos/owner/repo/info/lfs/objects/batch",
+        "/owner/repo/info/lfs/objects/batch",
         &body,
     ))
     .await;
@@ -156,7 +156,7 @@ async fn batch_upload_new_object_has_upload_action() {
     let body = format!(r#"{{"operation":"upload","objects":[{{"oid":"{NEW_OID}","size":100}}]}}"#);
     let resp = invoke(make_event(
         "POST",
-        "/repos/owner/repo/info/lfs/objects/batch",
+        "/owner/repo/info/lfs/objects/batch",
         &body,
     ))
     .await;
@@ -174,7 +174,7 @@ async fn batch_upload_existing_object_has_no_actions() {
     );
     let resp = invoke(make_event(
         "POST",
-        "/repos/owner/repo/info/lfs/objects/batch",
+        "/owner/repo/info/lfs/objects/batch",
         &body,
     ))
     .await;
@@ -194,7 +194,7 @@ async fn batch_download_existing_object_has_download_action() {
     );
     let resp = invoke(make_event(
         "POST",
-        "/repos/owner/repo/info/lfs/objects/batch",
+        "/owner/repo/info/lfs/objects/batch",
         &body,
     ))
     .await;
@@ -212,7 +212,7 @@ async fn batch_download_missing_object_returns_error_code_404() {
         format!(r#"{{"operation":"download","objects":[{{"oid":"{MISSING_OID}","size":100}}]}}"#);
     let resp = invoke(make_event(
         "POST",
-        "/repos/owner/repo/info/lfs/objects/batch",
+        "/owner/repo/info/lfs/objects/batch",
         &body,
     ))
     .await;
