@@ -1,0 +1,49 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'リリースバージョン（例: v1.0.0）'
+        required: true
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-release-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Install cargo-lambda
+        run: pip install cargo-lambda
+
+      - name: Build
+        run: cargo lambda build --release
+
+      - name: Create ZIP files
+        run: |
+          (cd target/lambda/rust-aws-lfs            && zip -j ../rust-aws-lfs.zip bootstrap)
+          (cd target/lambda/rust-aws-lfs-authorizer && zip -j ../rust-aws-lfs-authorizer.zip bootstrap)
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ inputs.version }}" \
+            target/lambda/rust-aws-lfs.zip \
+            target/lambda/rust-aws-lfs-authorizer.zip \
+            cloudformation/template.yaml
