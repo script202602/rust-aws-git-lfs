@@ -3,62 +3,58 @@
 ## 全体構成
 
 ```mermaid
-graph TB
-    subgraph Client["クライアント"]
-        GIT["git-lfs client<br/>GitHub Token 認証"]
-    end
+%%{init: {"theme": "neutral", "flowchart": {"nodeSpacing": 10, "rankSpacing": 30}} }%%
+flowchart LR
 
-    subgraph AWS["AWS"]
-        subgraph APIGW["API Gateway (HTTP API)"]
-            ROUTE["ANY /{proxy+}"]
-        end
+git_client["git-lfs client<br/>GitHub Token 認証"]
 
-        subgraph AUTH["認証レイヤー"]
-            AUTHORIZER["Lambda Authorizer<br/>rust-aws-lfs-authorizer<br/>provided.al2023"]
-        end
+subgraph aws["AWS"]
+  subgraph layer1[" "]
+    APIGW["API Gateway<br/>HTTP API"]
+  end
+  subgraph layer2[" "]
+    AUTHORIZER["Lambda Authorizer<br/>rust-aws-lfs-authorizer"]
+    LAMBDA["Lambda: LFS Handler<br/>rust-aws-lfs"]
+  end
+  subgraph layer3[" "]
+    S3["S3 Bucket<br/>プライベート"]
+    CF["CloudFront<br/>Signed URL 必須<br/>OAC + Key Group"]
+  end
+end
 
-        subgraph HANDLER["LFS ハンドラー"]
-            LAMBDA["Lambda: LFS Handler<br/>rust-aws-lfs<br/>provided.al2023"]
-        end
+github_api["GitHub API<br/>api.github.com"]
 
-        subgraph STORAGE["ストレージ"]
-            S3["S3 Bucket<br/>プライベート"]
-        end
+git_client ~~~ layer1 ~~~ layer2 ~~~ layer3
+AUTHORIZER ~~~ LAMBDA
+S3 ~~~ CF
 
-        subgraph CDN["コンテンツ配信"]
-            CF["CloudFront Distribution<br/>Signed URL 必須"]
-            OAC["Origin Access Control"]
-            KEYPAIR["Key Group / Public Key<br/>Signed URL 検証"]
-        end
+git_client ----->|"POST /batch or /verify"| APIGW
+APIGW -->|"認可チェック"| AUTHORIZER
+AUTHORIZER ---->|"GET /repos/owner/repo"| github_api
+github_api ---->|"permissions.pull 確認"| AUTHORIZER
+AUTHORIZER -->|"isAuthorized"| APIGW
+APIGW -->|"認可済みリクエスト"| LAMBDA
+LAMBDA -->|"HeadObject / Presigned URL"| S3
+LAMBDA -->|"Signed URL 生成"| CF
+git_client -.->|"PUT: Presigned URL"| S3
+git_client -.->|"GET: Signed URL"| CF
+CF -->|"OAC SigV4"| S3
 
-        subgraph IAM["IAM"]
-            ROLE_MAIN["Lambda 実行ロール<br/>S3: GetObject, PutObject, HeadObject"]
-            ROLE_AUTH["Authorizer 実行ロール<br/>基本実行権限のみ"]
-        end
-    end
+style aws fill:#fff,color:#345,stroke:#345
 
-    subgraph External["外部サービス"]
-        GITHUB_API["GitHub API<br/>api.github.com"]
-    end
+classDef lambda     fill:#E8721C,stroke:#E8721C,color:#fff
+classDef s3         fill:#3F8624,stroke:#3F8624,color:#fff
+classDef cloudfront fill:#8C4FFF,stroke:#8C4FFF,color:#fff
+classDef apigw      fill:#E7157B,stroke:#E7157B,color:#fff
+classDef external   fill:#232F3E,stroke:#232F3E,color:#fff
+classDef group      fill:none,stroke:none
 
-    GIT -->|"HTTPS POST /batch or /verify"| ROUTE
-    ROUTE -->|"認可チェック"| AUTHORIZER
-    AUTHORIZER -->|"GET /repos/owner/repo"| GITHUB_API
-    GITHUB_API -->|"permissions.pull 確認"| AUTHORIZER
-    AUTHORIZER -->|"isAuthorized: true / false"| ROUTE
-    ROUTE -->|"認可済みリクエスト"| LAMBDA
-
-    LAMBDA -->|"HeadObject / Presigned URL 生成"| S3
-    LAMBDA -->|"CloudFront Signed URL 生成"| CF
-
-    GIT -.->|"PUT: Presigned URL 経由で直接アップロード"| S3
-    GIT -.->|"GET: CloudFront Signed URL 経由"| CF
-    CF -->|"OAC で署名した S3 リクエスト"| OAC
-    OAC --> S3
-
-    ROLE_MAIN -.->|"アタッチ"| LAMBDA
-    ROLE_AUTH -.->|"アタッチ"| AUTHORIZER
-    KEYPAIR -.->|"Signed URL 検証"| CF
+class git_client,github_api external
+class APIGW apigw
+class AUTHORIZER,LAMBDA lambda
+class S3 s3
+class CF cloudfront
+class layer1,layer2,layer3 group
 ```
 
 ---
@@ -153,21 +149,26 @@ sequenceDiagram
 ## セキュリティ設計
 
 ```mermaid
-graph LR
-    subgraph AUTHZ["認証・認可"]
-        A["GitHub Token<br/>HTTP Basic Auth"] -->|"Lambda Authorizer で検証"| B["GitHub API<br/>/repos/owner/repo"]
-        B -->|"permissions.pull == true"| C["アクセス許可"]
-    end
+%%{init: {"theme": "neutral", "flowchart": {"nodeSpacing": 10, "rankSpacing": 30}} }%%
+flowchart TB
 
-    subgraph S3SEC["S3 保護"]
-        D["パブリックアクセス<br/>完全ブロック"]
-        E["バケットポリシー<br/>CloudFront OAC のみ許可"]
-        F["Lambda IAM<br/>オブジェクト単位の最小権限"]
-    end
+subgraph AUTHZ["認証・認可"]
+  A["GitHub Token<br/>HTTP Basic Auth"] -->|"Lambda Authorizer で検証"| B["GitHub API<br/>/repos/owner/repo"]
+  B -->|"permissions.pull == true"| C["アクセス許可"]
+end
 
-    subgraph DLSEC["ダウンロード保護"]
-        G["CloudFront Signed URL<br/>RSA-SHA1 署名"]
-        H["有効期限付き<br/>CLOUDFRONT_URL_TTL_SECS"]
-        G --- H
-    end
+subgraph S3SEC["S3 保護"]
+  D["パブリックアクセス<br/>完全ブロック"]
+  E["バケットポリシー<br/>CloudFront OAC のみ許可"]
+  F["Lambda IAM<br/>オブジェクト単位の最小権限"]
+  D ~~~ E ~~~ F
+end
+
+subgraph DLSEC["ダウンロード保護"]
+  G["CloudFront Signed URL<br/>RSA-SHA1 署名"]
+  H["有効期限付き<br/>CLOUDFRONT_URL_TTL_SECS"]
+  G --- H
+end
+
+AUTHZ ~~~ S3SEC ~~~ DLSEC
 ```
