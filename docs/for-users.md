@@ -10,7 +10,7 @@ CloudFormation cannot compile code, so you must upload a pre-built binary to S3 
 
 ### 1. Download the files
 
-Download the following 3 files from [GitHub Releases](https://github.com/rahinaku/rust-aws-git-lfs/releases/latest):
+Download the following 3 files from [GitHub Releases](https://github.com/script202602/rust-aws-git-lfs/releases/latest):
 
 - `rust-aws-lfs.zip`
 - `rust-aws-lfs-authorizer.zip`
@@ -112,7 +112,7 @@ Password: <GitHub Personal Access Token (repo scope)>
 
 ## Redeploy After Code Updates
 
-1. Download the latest `rust-aws-lfs.zip` and `rust-aws-lfs-authorizer.zip` from [GitHub Releases](https://github.com/rahinaku/rust-aws-git-lfs/releases/latest)
+1. Download the latest `rust-aws-lfs.zip` and `rust-aws-lfs-authorizer.zip` from [GitHub Releases](https://github.com/script202602/rust-aws-git-lfs/releases/latest)
 2. AWS Console → **S3** → artifacts bucket → "Upload" to overwrite both files
 3. AWS Console → **CloudFormation** → select the stack → "Update" → "Use existing template" → keep parameters unchanged → "Update stack"
 
