@@ -4,11 +4,6 @@ variable "region" {
   default     = "ap-northeast-1"
 }
 
-variable "bucket_name" {
-  description = "LFS オブジェクトを格納する S3 バケット名（グローバルで一意である必要がある）"
-  type        = string
-}
-
 variable "function_name" {
   description = "Lambda 関数名のベース"
   type        = string
