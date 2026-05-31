@@ -112,6 +112,27 @@ Password: <GitHub Personal Access Token（repo スコープ）>
 
 > GitHub の Personal Access Token は [Settings → Developer settings → Personal access tokens](https://github.com/settings/tokens) で `repo` スコープを付けて発行してください。
 
+## （任意）CloudFront 定額プランへの切り替え
+
+定額プランは DDoS 攻撃やトラフィック急増時でも超過料金が発生しないメリットがありますが、無料で利用できる転送容量・リクエスト数の上限が従量課金の無料枠より少ない点に注意してください。最新の制限値は各公式ページを参照してください。
+
+- [従量課金の料金・無料枠](https://aws.amazon.com/jp/cloudfront/pricing/pay-as-you-go/)
+- [定額プランの料金・上限](https://aws.amazon.com/jp/cloudfront/pricing/)
+
+### 切り替え手順
+
+> **注意:** この手順は CloudFormation では自動化できません。AWS コンソールから手動で実施してください。
+
+**前提条件：**
+- CloudFormation スタックのデプロイが完了していること（テンプレートには定額プランに必要な `Managed-CachingOptimized` が設定済み）
+- アカウントに AWS クレジット・EDP 割引・プロモーションが適用されていないこと（定額プランと併用不可）
+
+1. [CloudFront コンソール](https://console.aws.amazon.com/cloudfront/) を開く
+2. 左メニューの **「ディストリビューション」** を選択
+3. 一覧の **ID 列**のリンクをクリックしてディストリビューションの詳細を開く
+4. **「Billing」** セクションで希望のプランの **「切り替え」** ボタンをクリック
+5. 確認画面で内容を確認して確定する
+
 ## トラブルシューティング
 
 ### `AWS::Logs::LogGroup` — AlreadyExists エラー

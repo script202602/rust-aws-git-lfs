@@ -246,6 +246,10 @@ resource "aws_cloudfront_key_group" "lfs" {
   items = [aws_cloudfront_public_key.lfs.id]
 }
 
+data "aws_cloudfront_cache_policy" "caching_optimized" {
+  name = "Managed-CachingOptimized"
+}
+
 resource "aws_cloudfront_distribution" "lfs" {
   enabled         = true
   is_ipv6_enabled = true
@@ -264,14 +268,7 @@ resource "aws_cloudfront_distribution" "lfs" {
     viewer_protocol_policy = "https-only"
     trusted_key_groups     = [aws_cloudfront_key_group.lfs.id]
 
-    forwarded_values {
-      query_string = false
-      cookies { forward = "none" }
-    }
-
-    min_ttl     = 0
-    default_ttl = var.cloudfront_signed_url_ttl_secs
-    max_ttl     = 86400
+    cache_policy_id        = data.aws_cloudfront_cache_policy.caching_optimized.id
   }
 
   restrictions {

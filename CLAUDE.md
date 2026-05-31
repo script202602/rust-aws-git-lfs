@@ -121,6 +121,24 @@ terraform import aws_cloudwatch_log_group.authorizer /aws/lambda/rust-aws-lfs-au
 
 **Cost Anomaly Detection（異常検知）について：** AWS アカウントにはデフォルトで `Default-Services-Monitor`（DIMENSIONAL/SERVICE）が作成済み。このプロジェクトのテンプレートでは管理しない。通知サブスクリプションが必要な場合は AWS コンソールの Cost Anomaly Detection から手動で設定する。
 
+### CloudFront 定額プランへの切り替え（手動・コンソール操作）
+
+CloudFront の定額プラン（Free / Pro / Business 等）は Terraform・CloudFormation 非対応のため、コンソールから手動で切り替える。
+
+**前提条件：**
+- ディストリビューションのキャッシュポリシーが AWS マネージドポリシー（`Managed-CachingOptimized` 等）を使用していること
+  - カスタムキャッシュポリシーや `ForwardedValues`（レガシー設定）が残っていると切り替えボタンがグレーアウトする
+- アカウントに AWS クレジット・EDP・プロモーション割引が適用されていないこと
+  - 適用中の場合は定額プランと併用不可のため切り替え不可
+
+**手順：**
+
+1. [CloudFront コンソール](https://console.aws.amazon.com/cloudfront/) を開く
+2. 左メニューの **「ディストリビューション」** を選択
+3. 一覧の **ID 列**のリンクをクリックしてディストリビューションの詳細を開く
+4. **「Billing」** セクションで希望のプランの **「切り替え」** ボタンをクリック
+5. 確認画面で内容を確認して確定する
+
 ## Architecture
 
 This is a minimal AWS Lambda HTTP handler using the `lambda_http` crate from the [aws-lambda-rust-runtime](https://github.com/awslabs/aws-lambda-rust-runtime) project.

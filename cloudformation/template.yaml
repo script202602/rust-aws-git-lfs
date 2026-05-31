@@ -69,6 +69,13 @@ Parameters:
       a hard Lambda-side cap. Note: AWS requires the total unreserved concurrency across all Lambda
       functions in the account to stay at or above 10.
 
+  ManagedCachingOptimizedPolicyId:
+    Type: String
+    Default: 658327ea-f89d-4fab-a63d-7e88639e58f6
+    Description: >
+      ID of the AWS managed cache policy "Managed-CachingOptimized".
+      Override only if AWS changes the managed policy ID.
+
 # ────────────────────────────────────────────────────────────────────────────
 # Resources
 # ────────────────────────────────────────────────────────────────────────────
@@ -308,12 +315,7 @@ Resources:
           ViewerProtocolPolicy: https-only
           TrustedKeyGroups:
             - !Ref CloudFrontKeyGroup
-          ForwardedValues:
-            QueryString: false
-            Cookies: { Forward: none }
-          MinTTL: 0
-          DefaultTTL: !Ref CloudFrontSignedUrlTTL
-          MaxTTL: 86400
+          CachePolicyId: !Ref ManagedCachingOptimizedPolicyId
         Restrictions:
           GeoRestriction:
             RestrictionType: !If [HasGeoRestriction, "whitelist", "none"]
