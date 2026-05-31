@@ -34,13 +34,53 @@ Download the following 3 files from [GitHub Releases](https://github.com/rahinak
 2. "Upload a template file" → select the downloaded `template.yaml` → "Next"
 3. Fill in the parameters:
 
+   **Required:**
+
    | Parameter | Value | Description |
    |---|---|---|
-   | **LFSBucketName** | `my-lfs-bucket-yourname` | Bucket to store LFS objects (must be globally unique) |
-   | **ArtifactsBucketName** | `my-lfs-artifacts` | The bucket name you uploaded the ZIPs to |
-   | MainFunctionS3Key | `rust-aws-lfs.zip` | Leave as default |
-   | AuthorizerFunctionS3Key | `rust-aws-lfs-authorizer.zip` | Leave as default |
-   | CloudFrontSignedUrlTTL | `3600` | Leave as default |
+   | **ArtifactsBucketName** | `my-lfs-artifacts` | The S3 bucket where you uploaded the ZIPs |
+   | **BudgetAlertEmail** | `your@example.com` | Email address for cost alert notifications |
+
+   **Optional (leave as default or adjust as needed):**
+
+   | Parameter | Default | Description |
+   |---|---|---|
+   | MainFunctionS3Key | `rust-aws-lfs.zip` | S3 object key for the main Lambda ZIP |
+   | AuthorizerFunctionS3Key | `rust-aws-lfs-authorizer.zip` | S3 object key for the authorizer Lambda ZIP |
+   | CloudFrontSignedUrlTTL | `3600` | Signed URL expiry in seconds |
+   | LambdaMaxConcurrency | `-1` | Max concurrent executions per Lambda function. **Leave at `-1` (default) in most cases.** API Gateway throttling already limits the request rate, so a Lambda-side concurrency cap is unnecessary and may cause errors depending on the account's concurrency limit (see warning below). |
+   | ApiThrottlingRateLimit | `10` | API Gateway sustained request rate (req/s) |
+   | ApiThrottlingBurstLimit | `50` | API Gateway burst request limit |
+   | MonthlyBudgetLimit | `10` | Monthly cost budget in USD. Alerts sent at 80% and 100% (actual), and 80% (forecast). |
+   | LogRetentionDays | `30` | CloudWatch Logs retention period in days |
+   | CloudFrontGeoRestrictionLocations | *(empty)* | Comma-separated ISO 3166-1 alpha-2 country codes for CloudFront whitelist (e.g. `JP,US`). Leave empty for no restriction. |
+
+   > **⚠️ LambdaMaxConcurrency limit**
+   >
+   > This project deploys **2 Lambda functions** (main + authorizer), and the same value is applied to both.
+   > The total reserved concurrency consumed in your account is therefore **`LambdaMaxConcurrency × 2`**.
+   >
+   > **Error condition:**
+   > ```
+   > Account concurrency limit
+   >   − total reserved concurrency of all Lambda functions in the account
+   >   − LambdaMaxConcurrency × 2
+   > < 10 (minimum required unreserved concurrency)
+   > ```
+   >
+   > **New or free-tier accounts may have a limit as low as 10.**
+   > In that case, any positive value will always trigger `TooManyRequestsException`.
+   > Leave this parameter at `-1` (default) and rely on `ApiThrottlingRateLimit` / `ApiThrottlingBurstLimit` for cost protection instead.
+   >
+   > **Check your current limit before setting a value:**
+   >
+   > 1. AWS Console → **Lambda**
+   > 2. On the **Dashboard** (default landing page), find the **"Resources"** section for your region
+   > 3. Confirm **"Unreserved account concurrency"** is at least `LambdaMaxConcurrency × 2 + 10`
+   >
+   > To raise the limit: AWS Console → **Service Quotas** → "AWS services" → **"AWS Lambda"** → **"Concurrent executions"** → "Request quota increase".
+   >
+   > **Recommended value (when limit is sufficient):** Set to the same value as `ApiThrottlingBurstLimit` (default 50) to align the Lambda cap with the API Gateway burst limit.
 
 4. "Next" → "Next" → **check "I acknowledge that AWS CloudFormation might create IAM resources"** → "Create stack"
 5. Monitor progress in the "Events" tab (takes approximately 5–10 minutes)

@@ -69,14 +69,37 @@ openssl rsa -pubout -in cloudfront_private.pem -out cloudfront_public.pem
 cp terraform/terraform.tfvars.example terraform/terraform.tfvars
 ```
 
-`terraform/terraform.tfvars` を編集します（グローバルで一意なバケット名にしてください）：
+`terraform/terraform.tfvars` を編集します：
 
 ```hcl
-bucket_name                  = "my-lfs-bucket-yourname"
-region                       = "ap-northeast-1"
-function_name                = "rust-aws-lfs"
-lambda_reserved_concurrency  = 10   # Lambda の最大同時実行数。-1 で無制限
+region             = "ap-northeast-1"
+function_name      = "rust-aws-lfs"
+budget_alert_email = "your@example.com"
+
+# 任意：コスト保護（必要に応じてコメントアウトを外して設定）
+# lambda_reserved_concurrency          = 50   # 通常は指定不要（下記注意事項参照）
+# api_throttling_burst_limit           = 50
+# log_retention_days                   = 30
+# monthly_budget_limit                 = 10
+# cloudfront_geo_restriction_locations = ["JP"]  # 国コードでホワイトリスト制限
 ```
+
+> S3 バケット名は `lfs-<アカウントID>-<リージョン>` の形式で自動生成されます。
+
+> **⚠️ `lambda_reserved_concurrency` の設定制限**
+>
+> このプロジェクトは Lambda 関数が 2 つ（main + authorizer）あるため、消費される予約済み同時実行数は **`lambda_reserved_concurrency × 2`** になります。
+>
+> **新規アカウントや無料枠アカウントは同時実行上限が 10 の場合があります。**
+> この場合、正の値を設定すると `TooManyRequestsException` エラーが必ず発生します。
+> `-1`（デフォルト）のまま使用し、`api_throttling_rate_limit` / `api_throttling_burst_limit` でコストを制御してください。
+>
+> 設定前に空き容量を確認してください：
+> ```bash
+> aws lambda get-account-settings --query 'AccountLimit.[ConcurrentExecutions,UnreservedConcurrentExecutions]'
+> ```
+> `UnreservedConcurrentExecutions` が `lambda_reserved_concurrency × 2 + 10` 以上あれば設定可能です。
+> 上限を引き上げたい場合は [AWS Service Quotas](https://console.aws.amazon.com/servicequotas/) から「Lambda の同時実行数」の引き上げをリクエストしてください。
 
 PEM 鍵は `TF_VAR_` 環境変数で渡します。HCL の heredoc は PEM をパースできないため、この方法を使ってください：
 
@@ -99,6 +122,12 @@ terraform init       # プロバイダーをダウンロード（初回のみ）
 terraform plan       # 変更内容を確認
 terraform apply      # 実際に構築
 ```
+
+> **注意 — CloudWatch ロググループ：** Lambda 関数が Terraform 実行前に一度でも呼ばれていた場合、Lambda がロググループを自動作成するため `ResourceAlreadyExistsException` で失敗します。先に import してください：
+> ```bash
+> terraform import aws_cloudwatch_log_group.main /aws/lambda/rust-aws-lfs
+> terraform import aws_cloudwatch_log_group.authorizer /aws/lambda/rust-aws-lfs-authorizer
+> ```
 
 `apply` 完了後、エンドポイント URL が表示されます：
 

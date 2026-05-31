@@ -28,7 +28,7 @@ variable "cloudfront_signed_url_ttl_secs" {
 }
 
 variable "lambda_reserved_concurrency" {
-  description = "Lambda 関数ごとの最大同時実行数。デフォルトは -1（無制限）。コスト上限を設ける場合に指定する。アカウント内の全 Lambda の予約済み同時実行数の合計を差し引いた未予約分が最低 10 を下回らないよう注意"
+  description = "Lambda 関数ごとの最大同時実行数。通常は -1（無制限）のまま変更不要。API Gateway のスロットリングがリクエスト数を制限するため Lambda 側の制限は不要。設定する場合はアカウントの未予約同時実行数（UnreservedConcurrentExecutions）が 設定値×2+10 以上あることを確認すること"
   type        = number
   default     = -1
 }
@@ -54,4 +54,16 @@ variable "monthly_budget_limit" {
   description = "月次コスト予算の上限（USD）。80% と 100% 超過時にメール通知"
   type        = number
   default     = 10
+}
+
+variable "log_retention_days" {
+  description = "CloudWatch Logs の保持日数"
+  type        = number
+  default     = 30
+}
+
+variable "cloudfront_geo_restriction_locations" {
+  description = "CloudFront の地理的制限（ホワイトリスト）の国コード（ISO 3166-1 alpha-2）。空リストで制限なし（例: [\"JP\", \"US\"]）"
+  type        = list(string)
+  default     = []
 }
