@@ -77,7 +77,7 @@ resource "aws_iam_role_policy" "main_s3" {
     Version = "2012-10-17"
     Statement = [{
       Effect   = "Allow"
-      Action   = ["s3:GetObject", "s3:PutObject", "s3:HeadObject"]
+      Action   = ["s3:GetObject", "s3:PutObject"]
       Resource = "${aws_s3_bucket.lfs.arn}/objects/*"
     }]
   })
@@ -160,6 +160,11 @@ resource "aws_apigatewayv2_stage" "default" {
   api_id      = aws_apigatewayv2_api.main.id
   name        = "$default"
   auto_deploy = true
+
+  default_route_settings {
+    throttling_rate_limit  = var.api_throttling_rate_limit
+    throttling_burst_limit = var.api_throttling_burst_limit
+  }
 }
 
 resource "aws_apigatewayv2_integration" "main" {
@@ -263,5 +268,31 @@ resource "aws_cloudfront_distribution" "lfs" {
 
   viewer_certificate {
     cloudfront_default_certificate = true
+  }
+}
+
+# ── Budgets ───────────────────────────────────────────────────────────────────
+
+resource "aws_budgets_budget" "monthly" {
+  name         = "${var.function_name}-monthly-budget"
+  budget_type  = "COST"
+  limit_amount = tostring(var.monthly_budget_limit)
+  limit_unit   = "USD"
+  time_unit    = "MONTHLY"
+
+  notification {
+    comparison_operator        = "GREATER_THAN"
+    threshold                  = 80
+    threshold_type             = "PERCENTAGE"
+    notification_type          = "ACTUAL"
+    subscriber_email_addresses = [var.budget_alert_email]
+  }
+
+  notification {
+    comparison_operator        = "GREATER_THAN"
+    threshold                  = 100
+    threshold_type             = "PERCENTAGE"
+    notification_type          = "ACTUAL"
+    subscriber_email_addresses = [var.budget_alert_email]
   }
 }
