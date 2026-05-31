@@ -1,3 +1,8 @@
+output "lfs_bucket_name" {
+  description = "LFS オブジェクトを格納する S3 バケット名"
+  value       = aws_s3_bucket.lfs.bucket
+}
+
 output "lfs_base_url" {
   description = "LFS_BASE_URL および git config lfs.url のベース URL"
   value       = aws_apigatewayv2_stage.default.invoke_url
