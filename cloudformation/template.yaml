@@ -162,7 +162,7 @@ Resources:
             Version: "2012-10-17"
             Statement:
               - Effect: Allow
-                Action: [s3:GetObject, s3:PutObject, s3:HeadObject]
+                Action: [s3:GetObject, s3:PutObject]
                 Resource: !Sub "${LFSBucket.Arn}/objects/*"
 
   AuthorizerLambdaRole:
@@ -301,7 +301,8 @@ Resources:
     Properties:
       ApiId: !Ref HttpApi
       AuthorizerType: REQUEST
-      IdentitySources: ["$request.header.authorization"]
+      IdentitySource:
+        - "$request.header.authorization"
       Name: github-auth
       AuthorizerUri: !Sub
         - "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${FnArn}/invocations"
