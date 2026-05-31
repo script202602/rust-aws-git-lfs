@@ -15,10 +15,12 @@ provider "aws" {
   region = var.region
 }
 
+data "aws_caller_identity" "current" {}
+
 # ── S3 ────────────────────────────────────────────────────────────────────────
 
 resource "aws_s3_bucket" "lfs" {
-  bucket = var.bucket_name
+  bucket = "lfs-${data.aws_caller_identity.current.account_id}-${var.region}"
 }
 
 resource "aws_s3_bucket_public_access_block" "lfs" {
