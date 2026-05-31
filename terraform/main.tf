@@ -100,6 +100,18 @@ resource "aws_iam_role_policy_attachment" "authorizer_basic" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
 
+# ── CloudWatch Logs ───────────────────────────────────────────────────────────
+
+resource "aws_cloudwatch_log_group" "main" {
+  name              = "/aws/lambda/${var.function_name}"
+  retention_in_days = var.log_retention_days
+}
+
+resource "aws_cloudwatch_log_group" "authorizer" {
+  name              = "/aws/lambda/${var.function_name}-authorizer"
+  retention_in_days = var.log_retention_days
+}
+
 # ── Lambda ────────────────────────────────────────────────────────────────────
 
 # cargo lambda build --release でビルドした bootstrap バイナリを zip 化する
@@ -263,7 +275,10 @@ resource "aws_cloudfront_distribution" "lfs" {
   }
 
   restrictions {
-    geo_restriction { restriction_type = "none" }
+    geo_restriction {
+      restriction_type = length(var.cloudfront_geo_restriction_locations) > 0 ? "whitelist" : "none"
+      locations        = var.cloudfront_geo_restriction_locations
+    }
   }
 
   viewer_certificate {
@@ -295,4 +310,13 @@ resource "aws_budgets_budget" "monthly" {
     notification_type          = "ACTUAL"
     subscriber_email_addresses = [var.budget_alert_email]
   }
+
+  notification {
+    comparison_operator        = "GREATER_THAN"
+    threshold                  = 80
+    threshold_type             = "PERCENTAGE"
+    notification_type          = "FORECASTED"
+    subscriber_email_addresses = [var.budget_alert_email]
+  }
 }
+

@@ -69,14 +69,35 @@ openssl rsa -pubout -in cloudfront_private.pem -out cloudfront_public.pem
 cp terraform/terraform.tfvars.example terraform/terraform.tfvars
 ```
 
-Edit `terraform/terraform.tfvars` (use a globally unique bucket name):
+Edit `terraform/terraform.tfvars`:
 
 ```hcl
-bucket_name                  = "my-lfs-bucket-yourname"
-region                       = "ap-northeast-1"
-function_name                = "rust-aws-lfs"
-lambda_reserved_concurrency  = 10   # Max concurrent Lambda executions. -1 for unlimited
+region             = "ap-northeast-1"
+function_name      = "rust-aws-lfs"
+budget_alert_email = "your@example.com"
+
+# Optional: cost protection (uncomment and adjust as needed)
+# lambda_reserved_concurrency          = 50   # Normally not needed — see warning below
+# api_throttling_burst_limit           = 50
+# log_retention_days                   = 30
+# monthly_budget_limit                 = 10
+# cloudfront_geo_restriction_locations = ["JP"]  # Whitelist by country code
 ```
+
+> The S3 bucket name is auto-generated as `lfs-<account-id>-<region>`.
+
+> **⚠️ `lambda_reserved_concurrency` limit**
+>
+> This project deploys 2 Lambda functions (main + authorizer), so total reserved concurrency is **`lambda_reserved_concurrency × 2`**.
+>
+> **New or free-tier accounts may have a limit as low as 10.** In that case, any positive value always causes `TooManyRequestsException`. Leave this at `-1` and use `api_throttling_rate_limit` / `api_throttling_burst_limit` for cost control instead.
+>
+> Check available capacity first:
+> ```bash
+> aws lambda get-account-settings --query 'AccountLimit.[ConcurrentExecutions,UnreservedConcurrentExecutions]'
+> ```
+> `UnreservedConcurrentExecutions` must be at least `lambda_reserved_concurrency × 2 + 10`.
+> To raise the limit, request a quota increase via [AWS Service Quotas](https://console.aws.amazon.com/servicequotas/).
 
 Pass the PEM keys via `TF_VAR_` environment variables. HCL heredocs cannot parse PEM, so use this method:
 
@@ -99,6 +120,12 @@ terraform init       # Download providers (first time only)
 terraform plan       # Preview changes
 terraform apply      # Apply changes
 ```
+
+> **Note — CloudWatch Log Groups:** If the Lambda functions have already been invoked before running Terraform, the log groups are auto-created by Lambda and Terraform will fail with `ResourceAlreadyExistsException`. Import them first:
+> ```bash
+> terraform import aws_cloudwatch_log_group.main /aws/lambda/rust-aws-lfs
+> terraform import aws_cloudwatch_log_group.authorizer /aws/lambda/rust-aws-lfs-authorizer
+> ```
 
 After `apply` completes, the endpoint URL is shown:
 

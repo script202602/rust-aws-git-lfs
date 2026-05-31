@@ -44,6 +44,18 @@ Parameters:
     Default: 10
     Description: Monthly cost budget limit in USD. An alert is sent at 80% and 100%.
 
+  LogRetentionDays:
+    Type: Number
+    Default: 30
+    Description: CloudWatch Logs retention period in days for all Lambda functions
+
+  CloudFrontGeoRestrictionLocations:
+    Type: String
+    Default: ""
+    Description: >
+      Comma-separated ISO 3166-1 alpha-2 country codes for CloudFront whitelist geo restriction.
+      Leave empty for no restriction (e.g. JP,US).
+
   ApiThrottlingRateLimit:
     Type: Number
     Default: 10
@@ -70,6 +82,7 @@ Parameters:
 # ────────────────────────────────────────────────────────────────────────────
 Conditions:
   HasLambdaConcurrencyLimit: !Not [!Equals [!Ref LambdaMaxConcurrency, "-1"]]
+  HasGeoRestriction: !Not [!Equals [!Ref CloudFrontGeoRestrictionLocations, ""]]
 
 # ────────────────────────────────────────────────────────────────────────────
 # Resources
@@ -100,7 +113,9 @@ Resources:
 
   RSAKeyGenFunction:
     Type: AWS::Lambda::Function
+    DependsOn: RSAKeyGenFunctionLogGroup
     Properties:
+      FunctionName: !Sub "${AWS::StackName}-rsa-key-gen"
       Runtime: python3.12
       Handler: index.handler
       Role: !GetAtt RSAKeyGenRole.Arn
@@ -224,6 +239,7 @@ Resources:
 
   AuthorizerFunction:
     Type: AWS::Lambda::Function
+    DependsOn: AuthorizerFunctionLogGroup
     Properties:
       FunctionName: !Sub "${AWS::StackName}-authorizer"
       Runtime: provided.al2023
@@ -304,14 +320,18 @@ Resources:
           DefaultTTL: !Ref CloudFrontSignedUrlTTL
           MaxTTL: 86400
         Restrictions:
-          GeoRestriction: { RestrictionType: none }
+          GeoRestriction:
+            RestrictionType: !If [HasGeoRestriction, "whitelist", "none"]
+            Locations: !If [HasGeoRestriction, !Split [",", !Ref CloudFrontGeoRestrictionLocations], !Ref AWS::NoValue]
         ViewerCertificate:
           CloudFrontDefaultCertificate: true
 
   # Main Lambda is created after CloudFront info is finalized
   MainFunction:
     Type: AWS::Lambda::Function
-    DependsOn: HttpApiStage
+    DependsOn:
+      - HttpApiStage
+      - MainFunctionLogGroup
     Properties:
       FunctionName: !Sub "${AWS::StackName}-main"
       Runtime: provided.al2023
@@ -319,7 +339,7 @@ Resources:
       Role: !GetAtt MainLambdaRole.Arn
       Timeout: 30
       MemorySize: 128
-      ReservedConcurrentExecutions: !Ref LambdaMaxConcurrency
+      ReservedConcurrentExecutions: !If [HasLambdaConcurrencyLimit, !Ref LambdaMaxConcurrency, !Ref AWS::NoValue]
       Code:
         S3Bucket: !Ref ArtifactsBucketName
         S3Key: !Ref MainFunctionS3Key
@@ -383,6 +403,26 @@ Resources:
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/authorizers/*"
 
+  # ── CloudWatch Logs ─────────────────────────────────────────────────────
+
+  RSAKeyGenFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${AWS::StackName}-rsa-key-gen"
+      RetentionInDays: !Ref LogRetentionDays
+
+  AuthorizerFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${AWS::StackName}-authorizer"
+      RetentionInDays: !Ref LogRetentionDays
+
+  MainFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${AWS::StackName}-main"
+      RetentionInDays: !Ref LogRetentionDays
+
   # ── Cost protection ─────────────────────────────────────────────────────
 
   MonthlyBudget:
@@ -408,6 +448,14 @@ Resources:
             NotificationType: ACTUAL
             ComparisonOperator: GREATER_THAN
             Threshold: 100
+            ThresholdType: PERCENTAGE
+          Subscribers:
+            - SubscriptionType: EMAIL
+              Address: !Ref BudgetAlertEmail
+        - Notification:
+            NotificationType: FORECASTED
+            ComparisonOperator: GREATER_THAN
+            Threshold: 80
             ThresholdType: PERCENTAGE
           Subscribers:
             - SubscriptionType: EMAIL
