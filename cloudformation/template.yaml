@@ -3,6 +3,12 @@ Description: >
   rust-aws-git-lfs — Git LFS server (Lambda + S3 + API Gateway + CloudFront).
   An RSA key pair is automatically generated at stack creation time.
 
+Metadata:
+  cfn-lint:
+    config:
+      ignore_checks:
+        - W1030  # LambdaMaxConcurrency uses -1 as "unlimited" sentinel; !If with AWS::NoValue handles it correctly
+
 # ────────────────────────────────────────────────────────────────────────────
 # Parameters (values that must be provided at stack creation)
 # ────────────────────────────────────────────────────────────────────────────
@@ -28,6 +34,42 @@ Parameters:
     Type: Number
     Default: 3600
     Description: TTL in seconds for CloudFront Signed URLs
+
+  BudgetAlertEmail:
+    Type: String
+    Description: Email address to receive monthly budget alert notifications
+
+  MonthlyBudgetLimit:
+    Type: Number
+    Default: 10
+    Description: Monthly cost budget limit in USD. An alert is sent at 80% and 100%.
+
+  ApiThrottlingRateLimit:
+    Type: Number
+    Default: 10
+    Description: API Gateway sustained requests per second per stage
+
+  ApiThrottlingBurstLimit:
+    Type: Number
+    Default: 50
+    Description: API Gateway maximum burst requests per stage
+
+  LambdaMaxConcurrency:
+    Type: Number
+    Default: -1
+    Description: >
+      Reserved concurrent executions per Lambda function. Default is -1 (unlimited).
+      Set a positive value to cap costs under DDoS. Note: AWS requires the total
+      unreserved concurrency across all Lambda functions in the account to stay at or above 10.
+
+# ────────────────────────────────────────────────────────────────────────────
+# Resources
+# ────────────────────────────────────────────────────────────────────────────
+# ────────────────────────────────────────────────────────────────────────────
+# Conditions
+# ────────────────────────────────────────────────────────────────────────────
+Conditions:
+  HasLambdaConcurrencyLimit: !Not [!Equals [!Ref LambdaMaxConcurrency, "-1"]]
 
 # ────────────────────────────────────────────────────────────────────────────
 # Resources
@@ -189,6 +231,7 @@ Resources:
       Role: !GetAtt AuthorizerLambdaRole.Arn
       Timeout: 10
       MemorySize: 128
+      ReservedConcurrentExecutions: !If [HasLambdaConcurrencyLimit, !Ref LambdaMaxConcurrency, !Ref AWS::NoValue]
       Code:
         S3Bucket: !Ref ArtifactsBucketName
         S3Key: !Ref AuthorizerFunctionS3Key
@@ -205,6 +248,9 @@ Resources:
       ApiId: !Ref HttpApi
       StageName: "$default"
       AutoDeploy: true
+      DefaultRouteSettings:
+        ThrottlingRateLimit: !Ref ApiThrottlingRateLimit
+        ThrottlingBurstLimit: !Ref ApiThrottlingBurstLimit
 
   CloudFrontOAC:
     Type: AWS::CloudFront::OriginAccessControl
@@ -273,6 +319,7 @@ Resources:
       Role: !GetAtt MainLambdaRole.Arn
       Timeout: 30
       MemorySize: 128
+      ReservedConcurrentExecutions: !Ref LambdaMaxConcurrency
       Code:
         S3Bucket: !Ref ArtifactsBucketName
         S3Key: !Ref MainFunctionS3Key
@@ -335,6 +382,36 @@ Resources:
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/authorizers/*"
+
+  # ── Cost protection ─────────────────────────────────────────────────────
+
+  MonthlyBudget:
+    Type: AWS::Budgets::Budget
+    Properties:
+      Budget:
+        BudgetName: !Sub "${AWS::StackName}-monthly-budget"
+        BudgetLimit:
+          Amount: !Ref MonthlyBudgetLimit
+          Unit: USD
+        TimeUnit: MONTHLY
+        BudgetType: COST
+      NotificationsWithSubscribers:
+        - Notification:
+            NotificationType: ACTUAL
+            ComparisonOperator: GREATER_THAN
+            Threshold: 80
+            ThresholdType: PERCENTAGE
+          Subscribers:
+            - SubscriptionType: EMAIL
+              Address: !Ref BudgetAlertEmail
+        - Notification:
+            NotificationType: ACTUAL
+            ComparisonOperator: GREATER_THAN
+            Threshold: 100
+            ThresholdType: PERCENTAGE
+          Subscribers:
+            - SubscriptionType: EMAIL
+              Address: !Ref BudgetAlertEmail
 
   # ── S3 bucket policy (applied after CloudFront is created) ───────────────
 

@@ -6,6 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - Rust (via rustup)
 - [Cargo Lambda](https://www.cargo-lambda.info/guide/installation.html) — required for building, local testing, and deploying
+- [cfn-lint](https://github.com/aws-cloudformation/cfn-lint) (`pipx install cfn-lint`) — required for validating CloudFormation templates
 
 ## Commands
 
@@ -33,6 +34,13 @@ cargo lambda invoke --data-file ./data.json
 
 # Deploy to AWS (creates IAM role + Lambda function)
 cargo lambda deploy
+```
+
+## CloudFormation
+
+```bash
+# Validate the CloudFormation template before deploying
+cfn-lint cloudformation/template.yaml
 ```
 
 ## Architecture
