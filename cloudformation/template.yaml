@@ -1,46 +1,46 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: >
   rust-aws-git-lfs — Git LFS server (Lambda + S3 + API Gateway + CloudFront).
-  RSA キーペアはスタック作成時に自動生成されます。
+  An RSA key pair is automatically generated at stack creation time.
 
 # ────────────────────────────────────────────────────────────────────────────
-# パラメータ（入力が必要な値）
+# Parameters (values that must be provided at stack creation)
 # ────────────────────────────────────────────────────────────────────────────
 Parameters:
 
   LFSBucketName:
     Type: String
     Description: >
-      LFS オブジェクトを格納する S3 バケット名。
-      全世界で一意な名前にしてください（例: my-lfs-bucket-yourname）。
+      S3 bucket name for storing LFS objects.
+      Must be globally unique (e.g. my-lfs-bucket-yourname).
 
   ArtifactsBucketName:
     Type: String
     Description: >
-      ビルド済み Lambda ZIP が格納されている S3 バケット名。
-      事前に rust-aws-lfs.zip と rust-aws-lfs-authorizer.zip をアップロードしてください。
+      S3 bucket name where the pre-built Lambda ZIPs are stored.
+      Upload rust-aws-lfs.zip and rust-aws-lfs-authorizer.zip before creating the stack.
 
   MainFunctionS3Key:
     Type: String
     Default: rust-aws-lfs.zip
-    Description: メイン Lambda ZIP の S3 オブジェクトキー
+    Description: S3 object key for the main Lambda ZIP
 
   AuthorizerFunctionS3Key:
     Type: String
     Default: rust-aws-lfs-authorizer.zip
-    Description: オーソライザー Lambda ZIP の S3 オブジェクトキー
+    Description: S3 object key for the authorizer Lambda ZIP
 
   CloudFrontSignedUrlTTL:
     Type: Number
     Default: 3600
-    Description: CloudFront Signed URL の有効期限（秒）
+    Description: TTL in seconds for CloudFront Signed URLs
 
 # ────────────────────────────────────────────────────────────────────────────
-# リソース
+# Resources
 # ────────────────────────────────────────────────────────────────────────────
 Resources:
 
-  # ── RSA キーペア自動生成（カスタムリソース） ──────────────────────────────
+  # ── RSA key pair auto-generation (custom resource) ───────────────────────
 
   RSAKeyGenRole:
     Type: AWS::IAM::Role
@@ -107,7 +107,7 @@ Resources:
                       respond(event, context, 'SUCCESS', {'PrivateKeyPem': priv, 'PublicKeyPem': pub})
                       return
 
-                  # Create: openssl で PKCS#8 RSA キーペアを生成
+                  # Create: generate PKCS#8 RSA key pair with openssl
                   with tempfile.TemporaryDirectory() as d:
                       priv_path = os.path.join(d, 'private.pem')
                       pub_path  = os.path.join(d, 'public.pem')
@@ -133,7 +133,7 @@ Resources:
     Properties:
       ServiceToken: !GetAtt RSAKeyGenFunction.Arn
 
-  # ── S3 ───────────────────────────────────────────────────────────────────
+  # ── S3 ──────────────────────────────────────────────────────────────────
 
   LFSBucket:
     Type: AWS::S3::Bucket
@@ -145,7 +145,7 @@ Resources:
         IgnorePublicAcls: true
         RestrictPublicBuckets: true
 
-  # ── IAM ──────────────────────────────────────────────────────────────────
+  # ── IAM ─────────────────────────────────────────────────────────────────
 
   MainLambdaRole:
     Type: AWS::IAM::Role
@@ -181,7 +181,7 @@ Resources:
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
 
-  # ── Lambda ───────────────────────────────────────────────────────────────
+  # ── Lambda ──────────────────────────────────────────────────────────────
 
   AuthorizerFunction:
     Type: AWS::Lambda::Function
@@ -265,7 +265,7 @@ Resources:
         ViewerCertificate:
           CloudFrontDefaultCertificate: true
 
-  # メイン Lambda は CloudFront の情報が確定してから作成
+  # Main Lambda is created after CloudFront info is finalized
   MainFunction:
     Type: AWS::Lambda::Function
     DependsOn: HttpApiStage
@@ -287,7 +287,7 @@ Resources:
           CLOUDFRONT_PRIVATE_KEY: !GetAtt RSAKeyPair.PrivateKeyPem
           CLOUDFRONT_URL_TTL_SECS: !Sub "${CloudFrontSignedUrlTTL}"
 
-  # ── API Gateway ──────────────────────────────────────────────────────────
+  # ── API Gateway ─────────────────────────────────────────────────────────
 
   LambdaIntegration:
     Type: AWS::ApiGatewayV2::Integration
@@ -338,7 +338,7 @@ Resources:
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/authorizers/*"
 
-  # ── S3 バケットポリシー（CloudFront 作成後に設定） ────────────────────────
+  # ── S3 bucket policy (applied after CloudFront is created) ───────────────
 
   LFSBucketPolicy:
     Type: AWS::S3::BucketPolicy
@@ -357,18 +357,18 @@ Resources:
                 AWS:SourceArn: !Sub "arn:aws:cloudfront::${AWS::AccountId}:distribution/${CloudFrontDistribution}"
 
 # ────────────────────────────────────────────────────────────────────────────
-# 出力（スタック作成完了後に表示される値）
+# Outputs (values shown after the stack is created successfully)
 # ────────────────────────────────────────────────────────────────────────────
 Outputs:
 
   LFSBaseUrl:
-    Description: API Gateway エンドポイント URL
+    Description: API Gateway endpoint URL
     Value: !Sub "https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com"
 
   CloudFrontDomain:
-    Description: CloudFront ドメイン名
+    Description: CloudFront domain name
     Value: !GetAtt CloudFrontDistribution.DomainName
 
   LFSUrlExample:
-    Description: "git lfs の設定 URL 例（<owner>/<repo> を置き換えてください）"
+    Description: "Example git lfs URL (replace <owner>/<repo> with your values)"
     Value: !Sub "https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com/<owner>/<repo>/info/lfs"
