@@ -1,100 +1,102 @@
-# 利用者向けガイド — AWS へのデプロイ（CloudFormation）
+[English](for-users.md) | [日本語](i18n/ja/for-users.md)
 
-S3・Lambda・API Gateway・CloudFront をまとめて構築します。**RSA キーペアはスタック作成時に自動生成**されます。
+# User Guide — Deploy to AWS (CloudFormation)
 
-## 事前準備：Lambda バイナリのアップロード
+Provisions S3, Lambda, API Gateway, and CloudFront together. **An RSA key pair is generated automatically when the stack is created.**
 
-CloudFormation はコードのコンパイルができないため、先にビルド済みバイナリを S3 に置く必要があります。
+## Prerequisites: Upload the Lambda Binary
 
-### 1. ファイルをダウンロード
+CloudFormation cannot compile code, so you must upload a pre-built binary to S3 first.
 
-[GitHub Releases](https://github.com/rahinaku/rust-aws-git-lfs/releases/latest) から以下の 3 ファイルをダウンロードします：
+### 1. Download the files
+
+Download the following 3 files from [GitHub Releases](https://github.com/rahinaku/rust-aws-git-lfs/releases/latest):
 
 - `rust-aws-lfs.zip`
 - `rust-aws-lfs-authorizer.zip`
 - `template.yaml`
 
-### 2. アーティファクト用 S3 バケットを作成
+### 2. Create an S3 bucket for artifacts
 
-1. AWS コンソール → **S3** → 「バケットを作成」
-2. バケット名を入力（例：`my-lfs-artifacts`）、リージョンはスタックを作成するリージョンと**同じ**リージョンを選択
-3. その他はデフォルトのまま「バケットを作成」
+1. AWS Console → **S3** → "Create bucket"
+2. Enter a bucket name (e.g. `my-lfs-artifacts`) and select the **same region** where you will create the stack
+3. Leave all other settings as default and click "Create bucket"
 
-### 3. ZIP ファイルをアップロード
+### 3. Upload the ZIP files
 
-1. 作成したバケットを開き「**アップロード**」をクリック
-2. ダウンロードした `rust-aws-lfs.zip` と `rust-aws-lfs-authorizer.zip` を追加
-3. 「アップロード」をクリック
+1. Open the bucket you created and click "**Upload**"
+2. Add `rust-aws-lfs.zip` and `rust-aws-lfs-authorizer.zip`
+3. Click "Upload"
 
-## CloudFormation でスタックを作成
+## Create the CloudFormation Stack
 
-1. AWS コンソール → **CloudFormation** → 「スタックの作成」→「新しいリソースを使用」
-2. 「テンプレートファイルのアップロード」→ ダウンロードした `template.yaml` を選択 → 「次へ」
-3. パラメータを入力：
+1. AWS Console → **CloudFormation** → "Create stack" → "With new resources"
+2. "Upload a template file" → select the downloaded `template.yaml` → "Next"
+3. Fill in the parameters:
 
-   | パラメータ | 入力値 | 説明 |
+   | Parameter | Value | Description |
    |---|---|---|
-   | **LFSBucketName** | `my-lfs-bucket-yourname` | LFS オブジェクト格納先（グローバルで一意にしてください） |
-   | **ArtifactsBucketName** | `my-lfs-artifacts` | 上でアップロードしたバケット名 |
-   | MainFunctionS3Key | `rust-aws-lfs.zip` | デフォルトのまま |
-   | AuthorizerFunctionS3Key | `rust-aws-lfs-authorizer.zip` | デフォルトのまま |
-   | CloudFrontSignedUrlTTL | `3600` | デフォルトのまま |
+   | **LFSBucketName** | `my-lfs-bucket-yourname` | Bucket to store LFS objects (must be globally unique) |
+   | **ArtifactsBucketName** | `my-lfs-artifacts` | The bucket name you uploaded the ZIPs to |
+   | MainFunctionS3Key | `rust-aws-lfs.zip` | Leave as default |
+   | AuthorizerFunctionS3Key | `rust-aws-lfs-authorizer.zip` | Leave as default |
+   | CloudFrontSignedUrlTTL | `3600` | Leave as default |
 
-4. 「次へ」→「次へ」→ **「AWS CloudFormation によって IAM リソースが作成される場合があることを承認します」にチェック** → 「スタックの作成」
-5. 「イベント」タブで進捗を確認（完了まで約 5〜10 分）
+4. "Next" → "Next" → **check "I acknowledge that AWS CloudFormation might create IAM resources"** → "Create stack"
+5. Monitor progress in the "Events" tab (takes approximately 5–10 minutes)
 
-## 完了後の確認
+## Verify After Completion
 
-スタックの「出力」タブに以下が表示されます：
+The stack's "Outputs" tab will show:
 
 ```
-LFSBaseUrl      → https://xxxxxxxxxx.execute-api.<region>.amazonaws.com
-LFSUrlExample   → https://xxxxxxxxxx.execute-api.<region>.amazonaws.com/<owner>/<repo>/info/lfs
+LFSBaseUrl       → https://xxxxxxxxxx.execute-api.<region>.amazonaws.com
+LFSUrlExample    → https://xxxxxxxxxx.execute-api.<region>.amazonaws.com/<owner>/<repo>/info/lfs
 CloudFrontDomain → d111111abcdef8.cloudfront.net
 ```
 
-`LFSUrlExample` の `<owner>/<repo>` を実際の GitHub リポジトリ名に置き換えて git-lfs を設定します：
+Replace `<owner>/<repo>` in `LFSUrlExample` with your actual GitHub repository name and configure git-lfs:
 
 ```bash
 git config lfs.url https://<API_ID>.execute-api.<region>.amazonaws.com/<owner>/<repo>/info/lfs
 ```
 
-`git lfs push` / `git lfs pull` の初回実行時に認証プロンプトが表示されます：
+On the first `git lfs push` / `git lfs pull`, you will be prompted for credentials:
 
 ```
-Username: <GitHub ユーザー名>
-Password: <GitHub Personal Access Token（repo スコープ）>
+Username: <GitHub username>
+Password: <GitHub Personal Access Token (repo scope)>
 ```
 
-> GitHub の Personal Access Token は [Settings → Developer settings → Personal access tokens](https://github.com/settings/tokens) で `repo` スコープを付けて発行してください。
+> Generate a Personal Access Token with the `repo` scope at [Settings → Developer settings → Personal access tokens](https://github.com/settings/tokens).
 
-## コード更新時の再デプロイ
+## Redeploy After Code Updates
 
-1. [GitHub Releases](https://github.com/rahinaku/rust-aws-git-lfs/releases/latest) から最新の `rust-aws-lfs.zip` と `rust-aws-lfs-authorizer.zip` をダウンロード
-2. AWS コンソール → **S3** → アーティファクトバケット → 「アップロード」で両ファイルを上書き
-3. AWS コンソール → **CloudFormation** → スタックを選択 → 「更新」→「既存のテンプレートを使用」→ パラメータはそのまま → 「スタックの更新」
+1. Download the latest `rust-aws-lfs.zip` and `rust-aws-lfs-authorizer.zip` from [GitHub Releases](https://github.com/rahinaku/rust-aws-git-lfs/releases/latest)
+2. AWS Console → **S3** → artifacts bucket → "Upload" to overwrite both files
+3. AWS Console → **CloudFormation** → select the stack → "Update" → "Use existing template" → keep parameters unchanged → "Update stack"
 
-## スタックの削除
+## Delete the Stack
 
-### 1. S3 バケットを空にして削除する
+### 1. Empty and delete the S3 buckets
 
-CloudFormation はオブジェクトが残っているバケットを削除できないため、先に S3 コンソールから空にします。
+CloudFormation cannot delete buckets that still contain objects, so empty them first from the S3 console.
 
-**LFS バケット（`my-lfs-bucket-yourname`）:**
+**LFS bucket (`my-lfs-bucket-yourname`):**
 
-1. AWS コンソール → **S3** → バケット一覧から `my-lfs-bucket-yourname` を選択
-2. 「**空にする**」ボタンをクリック → テキストボックスに `permanently delete` と入力 → 「空にする」
-3. 「**削除**」ボタンをクリック → バケット名を入力 → 「バケットを削除」
+1. AWS Console → **S3** → select `my-lfs-bucket-yourname`
+2. Click "**Empty**" → type `permanently delete` in the text box → "Empty"
+3. Click "**Delete**" → enter the bucket name → "Delete bucket"
 
-**アーティファクトバケット（`my-lfs-artifacts`）も同様に削除:**
+**Repeat for the artifacts bucket (`my-lfs-artifacts`):**
 
-1. S3 バケット一覧から `my-lfs-artifacts` を選択
-2. 「**空にする**」→「**削除**」の順に実行
+1. Select `my-lfs-artifacts` from the S3 bucket list
+2. "**Empty**" then "**Delete**"
 
-### 2. CloudFormation スタックを削除
+### 2. Delete the CloudFormation stack
 
-1. AWS コンソール → **CloudFormation** → スタック一覧からスタックを選択
-2. 「**削除**」ボタンをクリック → 確認ダイアログで「スタックの削除」
-3. 「イベント」タブで進捗を確認（完了まで約 5〜10 分）
+1. AWS Console → **CloudFormation** → select the stack
+2. Click "**Delete**" → confirm with "Delete stack"
+3. Monitor progress in the "Events" tab (takes approximately 5–10 minutes)
 
-> スタック削除により、Lambda 関数・API Gateway・CloudFront・IAM ロール・SSM パラメータ（RSA キーペア）がすべて自動削除されます。
+> Deleting the stack automatically removes the Lambda functions, API Gateway, CloudFront distribution, IAM roles, and SSM parameters (RSA key pair).
