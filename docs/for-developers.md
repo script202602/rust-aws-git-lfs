@@ -159,6 +159,27 @@ curl -s -u <github-username>:<github-pat> \
   -d '{"operation":"upload","objects":[{"oid":"4d7af9c6...","size":1024}]}'
 ```
 
+### 9. (Optional) Switch to CloudFront Fixed Pricing Plan
+
+Fixed pricing plans eliminate overage charges even during DDoS attacks or traffic spikes. However, note that the free included allowances (data transfer and requests) are lower than the pay-as-you-go always-free tier. See the official pages for current limits:
+
+- [Pay-as-you-go pricing & free tier](https://aws.amazon.com/cloudfront/pricing/pay-as-you-go/)
+- [Fixed pricing plans & limits](https://aws.amazon.com/cloudfront/pricing/)
+
+#### Steps to Switch
+
+> **Note:** This step cannot be automated with Terraform. It must be done manually from the AWS Console.
+
+**Prerequisites:**
+- Terraform deployment has completed successfully (`main.tf` already uses `Managed-CachingOptimized`, which is required for fixed pricing plans)
+- No AWS credits, EDP discounts, or promotions are active on your account (they cannot be combined with fixed pricing plans)
+
+1. Open the [CloudFront Console](https://console.aws.amazon.com/cloudfront/)
+2. In the left menu, select **"Distributions"**
+3. Click the link in the **ID column** to open the distribution detail page
+4. In the **"Billing"** section, click **"Switch"** on the desired plan
+5. Review the details on the confirmation screen and confirm
+
 ### Update Lambda (after code changes)
 
 ```bash
