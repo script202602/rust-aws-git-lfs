@@ -48,16 +48,14 @@ aws cloudformation deploy \
   --stack-name rust-aws-lfs \
   --capabilities CAPABILITY_NAMED_IAM \
   --parameter-overrides \
-    ArtifactsBucketName=<bucket> \
-    BudgetAlertEmail=<email>
+    ArtifactsBucketName=<bucket>
 
 # Deploy with optional parameters
 aws cloudformation deploy \
   --parameter-overrides \
     LogRetentionDays=30 \
     CloudFrontGeoRestrictionLocations="JP,US" \
-    LambdaMaxConcurrency=50 \
-    MonthlyBudgetLimit=10
+    LambdaMaxConcurrency=50
 ```
 
 ### CloudFormation パラメータ
@@ -69,8 +67,6 @@ aws cloudformation deploy \
 | `LambdaMaxConcurrency` | -1 | Lambda 同時実行数上限。-1 で無制限。`ApiThrottlingBurstLimit` 以上を推奨 |
 | `ApiThrottlingRateLimit` | 10 | API Gateway 持続リクエスト上限（req/s） |
 | `ApiThrottlingBurstLimit` | 50 | API Gateway バーストリクエスト上限 |
-| `MonthlyBudgetLimit` | 10 | 月次コスト予算上限（USD） |
-| `BudgetAlertEmail` | 必須 | コスト通知先メールアドレス |
 
 ### IDE の YAML 警告について
 
@@ -106,8 +102,6 @@ terraform import aws_cloudwatch_log_group.authorizer /aws/lambda/rust-aws-lfs-au
 | `lambda_reserved_concurrency` | -1 | Lambda 同時実行数上限。`api_throttling_burst_limit` 以上を推奨 |
 | `api_throttling_rate_limit` | 10 | API Gateway 持続リクエスト上限（req/s） |
 | `api_throttling_burst_limit` | 50 | API Gateway バーストリクエスト上限 |
-| `monthly_budget_limit` | 10 | 月次コスト予算上限（USD） |
-| `budget_alert_email` | 必須 | コスト通知先メールアドレス |
 | `cloudfront_private_key_pem` | 必須 | CloudFront Signed URL 用 RSA 秘密鍵（PEM）。`terraform.tfvars` にのみ記載しコミット禁止 |
 | `cloudfront_public_key_pem` | 必須 | CloudFront にアップロードする RSA 公開鍵（PEM） |
 
@@ -123,7 +117,6 @@ terraform import aws_cloudwatch_log_group.authorizer /aws/lambda/rust-aws-lfs-au
 | API Gateway スロットリング | `default_route_settings` |
 | Lambda 同時実行数制限（オプション） | `reserved_concurrent_executions` |
 | CloudWatch Logs 保持期間設定 | `aws_cloudwatch_log_group` / `AWS::Logs::LogGroup` |
-| AWS Budgets（実績 80%・100%、予測 80%） | `aws_budgets_budget` / `AWS::Budgets::Budget` |
 | CloudFront 地理的制限（オプション） | `geo_restriction` / `GeoRestriction` |
 
 **Cost Anomaly Detection（異常検知）について：** AWS アカウントにはデフォルトで `Default-Services-Monitor`（DIMENSIONAL/SERVICE）が作成済み。このプロジェクトのテンプレートでは管理しない。通知サブスクリプションが必要な場合は AWS コンソールの Cost Anomaly Detection から手動で設定する。

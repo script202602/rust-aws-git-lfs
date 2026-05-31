@@ -72,15 +72,13 @@ cp terraform/terraform.tfvars.example terraform/terraform.tfvars
 Edit `terraform/terraform.tfvars`:
 
 ```hcl
-region             = "ap-northeast-1"
-function_name      = "rust-aws-lfs"
-budget_alert_email = "your@example.com"
+region        = "ap-northeast-1"
+function_name = "rust-aws-lfs"
 
 # Optional: cost protection (uncomment and adjust as needed)
 # lambda_reserved_concurrency          = 50   # Normally not needed — see warning below
 # api_throttling_burst_limit           = 50
 # log_retention_days                   = 30
-# monthly_budget_limit                 = 10
 # cloudfront_geo_restriction_locations = ["JP"]  # Whitelist by country code
 ```
 

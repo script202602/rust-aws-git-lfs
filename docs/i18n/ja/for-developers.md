@@ -72,15 +72,13 @@ cp terraform/terraform.tfvars.example terraform/terraform.tfvars
 `terraform/terraform.tfvars` を編集します：
 
 ```hcl
-region             = "ap-northeast-1"
-function_name      = "rust-aws-lfs"
-budget_alert_email = "your@example.com"
+region        = "ap-northeast-1"
+function_name = "rust-aws-lfs"
 
 # 任意：コスト保護（必要に応じてコメントアウトを外して設定）
 # lambda_reserved_concurrency          = 50   # 通常は指定不要（下記注意事項参照）
 # api_throttling_burst_limit           = 50
 # log_retention_days                   = 30
-# monthly_budget_limit                 = 10
 # cloudfront_geo_restriction_locations = ["JP"]  # 国コードでホワイトリスト制限
 ```
 

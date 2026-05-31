@@ -18,6 +18,9 @@ Download the following 3 files from [GitHub Releases](https://github.com/script2
 
 ### 2. Create an S3 bucket for artifacts
 
+> **⚠️ Region must match:** The bucket **must be in the same AWS region** as the CloudFormation stack.
+> A cross-region bucket causes a `PermanentRedirect` error and the Lambda functions will fail to create.
+
 1. AWS Console → **S3** → "Create bucket"
 2. Enter a bucket name (e.g. `my-lfs-artifacts`) and select the **same region** where you will create the stack
 3. Leave all other settings as default and click "Create bucket"
@@ -39,7 +42,6 @@ Download the following 3 files from [GitHub Releases](https://github.com/script2
    | Parameter | Value | Description |
    |---|---|---|
    | **ArtifactsBucketName** | `my-lfs-artifacts` | The S3 bucket where you uploaded the ZIPs |
-   | **BudgetAlertEmail** | `your@example.com` | Email address for cost alert notifications |
 
    **Optional (leave as default or adjust as needed):**
 
@@ -51,7 +53,6 @@ Download the following 3 files from [GitHub Releases](https://github.com/script2
    | LambdaMaxConcurrency | `-1` | Max concurrent executions per Lambda function. **Leave at `-1` (default) in most cases.** API Gateway throttling already limits the request rate, so a Lambda-side concurrency cap is unnecessary and may cause errors depending on the account's concurrency limit (see warning below). |
    | ApiThrottlingRateLimit | `10` | API Gateway sustained request rate (req/s) |
    | ApiThrottlingBurstLimit | `50` | API Gateway burst request limit |
-   | MonthlyBudgetLimit | `10` | Monthly cost budget in USD. Alerts sent at 80% and 100% (actual), and 80% (forecast). |
    | LogRetentionDays | `30` | CloudWatch Logs retention period in days |
    | CloudFrontGeoRestrictionLocations | *(empty)* | Comma-separated ISO 3166-1 alpha-2 country codes for CloudFront whitelist (e.g. `JP,US`). Leave empty for no restriction. |
 
@@ -109,6 +110,27 @@ Password: <GitHub Personal Access Token (repo scope)>
 ```
 
 > Generate a Personal Access Token with the `repo` scope at [Settings → Developer settings → Personal access tokens](https://github.com/settings/tokens).
+
+## Troubleshooting
+
+### `AWS::Logs::LogGroup` — AlreadyExists error
+
+If stack creation fails with:
+
+```
+Resource of type 'AWS::Logs::LogGroup' with identifier '...' already exists.
+```
+
+A previous stack deletion left the log groups behind. Delete them before retrying:
+
+1. AWS Console → **CloudWatch** → **Log groups** (left sidebar)
+2. In the search box, enter `/aws/lambda/<your-stack-name>` (e.g. `/aws/lambda/git-lfs`)
+3. Select all matching log groups (`-rsa-key-gen`, `-authorizer`, `-main`)
+4. **Actions** → **Delete log group(s)** → confirm
+
+Then retry creating the stack.
+
+---
 
 ## Redeploy After Code Updates
 

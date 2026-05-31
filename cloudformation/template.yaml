@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: >
-  rust-aws-git-lfs — Git LFS server (Lambda + S3 + API Gateway + CloudFront).
+  rust-aws-git-lfs - Git LFS server (Lambda + S3 + API Gateway + CloudFront).
   An RSA key pair is automatically generated at stack creation time.
 
 Metadata:
@@ -18,6 +18,8 @@ Parameters:
     Type: String
     Description: >
       S3 bucket name where the pre-built Lambda ZIPs are stored.
+      The bucket MUST be in the same AWS region as this stack - a cross-region bucket causes
+      a PermanentRedirect error and the Lambda functions will fail to create.
       Upload rust-aws-lfs.zip and rust-aws-lfs-authorizer.zip before creating the stack.
 
   MainFunctionS3Key:
@@ -35,14 +37,6 @@ Parameters:
     Default: 3600
     Description: TTL in seconds for CloudFront Signed URLs
 
-  BudgetAlertEmail:
-    Type: String
-    Description: Email address to receive monthly budget alert notifications
-
-  MonthlyBudgetLimit:
-    Type: Number
-    Default: 10
-    Description: Monthly cost budget limit in USD. An alert is sent at 80% and 100%.
 
   LogRetentionDays:
     Type: Number
@@ -70,9 +64,10 @@ Parameters:
     Type: Number
     Default: -1
     Description: >
-      Reserved concurrent executions per Lambda function. Default is -1 (unlimited).
-      Set a positive value to cap costs under DDoS. Note: AWS requires the total
-      unreserved concurrency across all Lambda functions in the account to stay at or above 10.
+      Reserved concurrent executions per Lambda function. Leave at -1 (default) in most cases -
+      API Gateway throttling already limits the request rate. Only set a positive value if you need
+      a hard Lambda-side cap. Note: AWS requires the total unreserved concurrency across all Lambda
+      functions in the account to stay at or above 10.
 
 # ────────────────────────────────────────────────────────────────────────────
 # Resources
@@ -407,59 +402,27 @@ Resources:
 
   RSAKeyGenFunctionLogGroup:
     Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
     Properties:
       LogGroupName: !Sub "/aws/lambda/${AWS::StackName}-rsa-key-gen"
       RetentionInDays: !Ref LogRetentionDays
 
   AuthorizerFunctionLogGroup:
     Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
     Properties:
       LogGroupName: !Sub "/aws/lambda/${AWS::StackName}-authorizer"
       RetentionInDays: !Ref LogRetentionDays
 
   MainFunctionLogGroup:
     Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
     Properties:
       LogGroupName: !Sub "/aws/lambda/${AWS::StackName}-main"
       RetentionInDays: !Ref LogRetentionDays
-
-  # ── Cost protection ─────────────────────────────────────────────────────
-
-  MonthlyBudget:
-    Type: AWS::Budgets::Budget
-    Properties:
-      Budget:
-        BudgetName: !Sub "${AWS::StackName}-monthly-budget"
-        BudgetLimit:
-          Amount: !Ref MonthlyBudgetLimit
-          Unit: USD
-        TimeUnit: MONTHLY
-        BudgetType: COST
-      NotificationsWithSubscribers:
-        - Notification:
-            NotificationType: ACTUAL
-            ComparisonOperator: GREATER_THAN
-            Threshold: 80
-            ThresholdType: PERCENTAGE
-          Subscribers:
-            - SubscriptionType: EMAIL
-              Address: !Ref BudgetAlertEmail
-        - Notification:
-            NotificationType: ACTUAL
-            ComparisonOperator: GREATER_THAN
-            Threshold: 100
-            ThresholdType: PERCENTAGE
-          Subscribers:
-            - SubscriptionType: EMAIL
-              Address: !Ref BudgetAlertEmail
-        - Notification:
-            NotificationType: FORECASTED
-            ComparisonOperator: GREATER_THAN
-            Threshold: 80
-            ThresholdType: PERCENTAGE
-          Subscribers:
-            - SubscriptionType: EMAIL
-              Address: !Ref BudgetAlertEmail
 
   # ── S3 bucket policy (applied after CloudFront is created) ───────────────
 

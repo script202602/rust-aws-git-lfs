@@ -45,16 +45,6 @@ variable "api_throttling_burst_limit" {
   default     = 50
 }
 
-variable "budget_alert_email" {
-  description = "月次コスト予算アラートの通知先メールアドレス"
-  type        = string
-}
-
-variable "monthly_budget_limit" {
-  description = "月次コスト予算の上限（USD）。80% と 100% 超過時にメール通知"
-  type        = number
-  default     = 10
-}
 
 variable "log_retention_days" {
   description = "CloudWatch Logs の保持日数"

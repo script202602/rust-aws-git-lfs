@@ -1,3 +1,2 @@
 region             = "ap-northeast-1"
 function_name      = "rust-aws-lfs"
-budget_alert_email = "your@example.com"  # コスト通知先メールアドレスに変更してください
