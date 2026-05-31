@@ -8,12 +8,6 @@ Description: >
 # ────────────────────────────────────────────────────────────────────────────
 Parameters:
 
-  LFSBucketName:
-    Type: String
-    Description: >
-      S3 bucket name for storing LFS objects.
-      Must be globally unique (e.g. my-lfs-bucket-yourname).
-
   ArtifactsBucketName:
     Type: String
     Description: >
@@ -69,12 +63,16 @@ Resources:
       Handler: index.handler
       Role: !GetAtt RSAKeyGenRole.Arn
       Timeout: 60
+      Environment:
+        Variables:
+          STACK_NAME: !Ref AWS::StackName
       Code:
         ZipFile: |
           import json, os, subprocess, tempfile, urllib.request, boto3
 
-          PRIV = '/rust-aws-lfs/cf-private-key'
-          PUB  = '/rust-aws-lfs/cf-public-key'
+          _stack = os.environ['STACK_NAME']
+          PRIV = f'/rust-aws-lfs/{_stack}/cf-private-key'
+          PUB  = f'/rust-aws-lfs/{_stack}/cf-public-key'
 
           def respond(event, context, status, data=None, reason=None):
               body = json.dumps({
@@ -138,7 +136,6 @@ Resources:
   LFSBucket:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: !Ref LFSBucketName
       PublicAccessBlockConfiguration:
         BlockPublicAcls: true
         BlockPublicPolicy: true
@@ -166,7 +163,7 @@ Resources:
             Statement:
               - Effect: Allow
                 Action: [s3:GetObject, s3:PutObject, s3:HeadObject]
-                Resource: !Sub "arn:aws:s3:::${LFSBucketName}/objects/*"
+                Resource: !Sub "${LFSBucket.Arn}/objects/*"
 
   AuthorizerLambdaRole:
     Type: AWS::IAM::Role
@@ -281,7 +278,7 @@ Resources:
         S3Key: !Ref MainFunctionS3Key
       Environment:
         Variables:
-          S3_BUCKET: !Ref LFSBucketName
+          S3_BUCKET: !Ref LFSBucket
           CLOUDFRONT_DOMAIN: !GetAtt CloudFrontDistribution.DomainName
           CLOUDFRONT_KEY_PAIR_ID: !Ref CloudFrontPublicKey
           CLOUDFRONT_PRIVATE_KEY: !GetAtt RSAKeyPair.PrivateKeyPem
@@ -360,6 +357,10 @@ Resources:
 # Outputs (values shown after the stack is created successfully)
 # ────────────────────────────────────────────────────────────────────────────
 Outputs:
+
+  LFSBucketName:
+    Description: Auto-generated S3 bucket name for LFS objects
+    Value: !Ref LFSBucket
 
   LFSBaseUrl:
     Description: API Gateway endpoint URL
