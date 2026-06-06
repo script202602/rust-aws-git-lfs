@@ -80,6 +80,9 @@ function_name = "rust-aws-lfs"
 # api_throttling_burst_limit           = 50
 # log_retention_days                   = 30
 # cloudfront_geo_restriction_locations = ["JP"]  # 国コードでホワイトリスト制限
+
+# 任意：認証を許可する GitHub アカウントを制限する
+# allowed_github_users = "alice,bob"  # 空の場合は pull 権限を持つ任意のユーザーを許可
 ```
 
 > S3 バケット名は `lfs-<アカウントID>-<リージョン>` の形式で自動生成されます。

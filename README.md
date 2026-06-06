@@ -12,6 +12,8 @@ A Git LFS server implemented with AWS Lambda + S3, written in Rust.
 
 ## Environment Variables
 
+**Main Lambda:**
+
 | Variable                    | Description                                                      | Example                                                 |
 | --------------------------- | ---------------------------------------------------------------- | ------------------------------------------------------- |
 | `S3_BUCKET`                 | S3 bucket name to store LFS objects                              | `my-lfs-bucket`                                         |
@@ -21,6 +23,12 @@ A Git LFS server implemented with AWS Lambda + S3, written in Rust.
 | `CLOUDFRONT_URL_TTL_SECS`   | CloudFront Signed URL TTL in seconds. Default: 3600              | `3600`                                                  |
 
 If `CLOUDFRONT_*` variables are not set (e.g. LocalStack), downloads fall back to S3 presigned URLs.
+
+**Authorizer Lambda:**
+
+| Variable                | Description                                                                                                          | Example                   |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------- | ------------------------- |
+| `ALLOWED_GITHUB_USERS`  | Comma-separated list of GitHub usernames permitted to authenticate. Leave empty to allow any user with pull access.  | `alice,bob`               |
 
 ## Deploy & Setup
 
