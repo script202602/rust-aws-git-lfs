@@ -57,3 +57,9 @@ variable "cloudfront_geo_restriction_locations" {
   type        = list(string)
   default     = []
 }
+
+variable "allowed_github_users" {
+  description = "認証を許可する GitHub ユーザー名（カンマ区切り）。空文字でユーザー制限なし（例: \"alice,bob\"）"
+  type        = string
+  default     = ""
+}

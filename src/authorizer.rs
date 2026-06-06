@@ -8,6 +8,30 @@ struct AuthResponse {
     is_authorized: bool,
 }
 
+async fn get_github_login(github_api_base: &str, auth: &str) -> Option<String> {
+    let result = reqwest::Client::new()
+        .get(format!("{github_api_base}/user"))
+        .header("Authorization", auth)
+        .header("User-Agent", "rust-aws-git-lfs")
+        .send()
+        .await;
+
+    match result {
+        Ok(resp) if resp.status().is_success() => {
+            let body: Value = resp.json().await.unwrap_or(Value::Null);
+            body["login"].as_str().map(|s| s.to_lowercase())
+        }
+        Ok(resp) => {
+            tracing::warn!(github_status = %resp.status(), "GitHub /user failed");
+            None
+        }
+        Err(e) => {
+            tracing::error!(error = %e, "GitHub /user request failed");
+            None
+        }
+    }
+}
+
 async fn check_github_permission(
     github_api_base: &str,
     auth: &str,
@@ -41,6 +65,14 @@ async fn check_github_permission(
     }
 }
 
+fn is_user_allowed(login: &str, allowed_users_env: &str) -> bool {
+    let login_lower = login.to_lowercase();
+    allowed_users_env
+        .split(',')
+        .map(|u| u.trim().to_lowercase())
+        .any(|u| u == login_lower)
+}
+
 async fn handler(event: LambdaEvent<Value>) -> Result<AuthResponse, Error> {
     let headers = &event.payload["headers"];
     let auth = headers["authorization"]
@@ -63,6 +95,24 @@ async fn handler(event: LambdaEvent<Value>) -> Result<AuthResponse, Error> {
 
     let github_api_base = std::env::var("GITHUB_API_BASE_URL")
         .unwrap_or_else(|_| "https://api.github.com".to_string());
+
+    let allowed_users = std::env::var("ALLOWED_GITHUB_USERS").unwrap_or_default();
+
+    // ALLOWED_GITHUB_USERS が設定されている場合はユーザー名を検証する
+    if !allowed_users.is_empty() {
+        let login = match get_github_login(&github_api_base, auth).await {
+            Some(l) => l,
+            None => {
+                tracing::warn!("could not retrieve GitHub login");
+                return Ok(AuthResponse { is_authorized: false });
+            }
+        };
+        if !is_user_allowed(&login, &allowed_users) {
+            tracing::warn!(login, "GitHub user not in allowlist");
+            return Ok(AuthResponse { is_authorized: false });
+        }
+        tracing::info!(login, "GitHub user allowed");
+    }
 
     let is_authorized = check_github_permission(&github_api_base, auth, owner, repo).await;
 
@@ -144,5 +194,46 @@ mod tests {
         let result =
             check_github_permission(&server.uri(), "Bearer token", "owner", "repo").await;
         assert!(!result);
+    }
+
+    #[test]
+    fn allowlist_matching_is_case_insensitive() {
+        assert!(is_user_allowed("Alice", "alice,bob"));
+        assert!(is_user_allowed("BOB", "alice,bob"));
+        assert!(!is_user_allowed("carol", "alice,bob"));
+    }
+
+    #[test]
+    fn allowlist_trims_whitespace() {
+        assert!(is_user_allowed("alice", " alice , bob "));
+    }
+
+    #[tokio::test]
+    async fn get_github_login_returns_login_on_success() {
+        let server = start_mock_server().await;
+        Mock::given(method("GET"))
+            .and(path("/user"))
+            .and(header("Authorization", "Bearer token"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "login": "myuser"
+            })))
+            .mount(&server)
+            .await;
+
+        let login = get_github_login(&server.uri(), "Bearer token").await;
+        assert_eq!(login, Some("myuser".to_string()));
+    }
+
+    #[tokio::test]
+    async fn get_github_login_returns_none_on_error() {
+        let server = start_mock_server().await;
+        Mock::given(method("GET"))
+            .and(path("/user"))
+            .respond_with(ResponseTemplate::new(401))
+            .mount(&server)
+            .await;
+
+        let login = get_github_login(&server.uri(), "Bearer bad").await;
+        assert_eq!(login, None);
     }
 }
