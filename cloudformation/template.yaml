@@ -69,6 +69,13 @@ Parameters:
       a hard Lambda-side cap. Note: AWS requires the total unreserved concurrency across all Lambda
       functions in the account to stay at or above 10.
 
+  AllowedGithubUsers:
+    Type: String
+    Default: ""
+    Description: >
+      Comma-separated list of GitHub usernames allowed to authenticate (e.g. alice,bob).
+      Leave empty to allow any GitHub user with repository pull access.
+
   ManagedCachingOptimizedPolicyId:
     Type: String
     Default: 658327ea-f89d-4fab-a63d-7e88639e58f6
@@ -253,6 +260,9 @@ Resources:
       Code:
         S3Bucket: !Ref ArtifactsBucketName
         S3Key: !Ref AuthorizerFunctionS3Key
+      Environment:
+        Variables:
+          ALLOWED_GITHUB_USERS: !Ref AllowedGithubUsers
 
   HttpApi:
     Type: AWS::ApiGatewayV2::Api
