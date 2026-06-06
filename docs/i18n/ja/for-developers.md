@@ -83,6 +83,9 @@ function_name = "rust-aws-lfs"
 
 # 任意：認証を許可する GitHub アカウントを制限する
 # allowed_github_users = "alice,bob"  # 空の場合は pull 権限を持つ任意のユーザーを許可
+
+# CloudFront 定額プランを使用する場合は必須（プランに WAF Web ACL の関連付けが必須）
+# cloudfront_waf_web_acl_arn = "arn:aws:wafv2:us-east-1:ACCOUNT_ID:global/webacl/CreatedByCloudFront-XXXXXXXX/..."
 ```
 
 > S3 バケット名は `lfs-<アカウントID>-<リージョン>` の形式で自動生成されます。
@@ -184,6 +187,22 @@ curl -s -u <github-username>:<github-pat> \
 3. 一覧の **ID 列**のリンクをクリックしてディストリビューションの詳細を開く
 4. **「Billing」** セクションで希望のプランの **「切り替え」** ボタンをクリック
 5. 確認画面で内容を確認して確定する
+
+#### 切り替え後：`cloudfront_waf_web_acl_arn` の設定
+
+定額プランにサブスクライブすると、AWS が自動的に WAF Web ACL を作成してディストリビューションに関連付けます。この ARN を `terraform.tfvars` に追記しないと、次回の `terraform apply` が `InvalidArgument: You can't remove or replace the web ACL` エラーで失敗します。
+
+```bash
+# 関連付けられている Web ACL の ARN を取得
+aws cloudfront get-distribution --id <DISTRIBUTION_ID> \
+  --query 'Distribution.DistributionConfig.WebACLId' --output text
+```
+
+取得した値を `terraform/terraform.tfvars` に追記します：
+
+```hcl
+cloudfront_waf_web_acl_arn = "arn:aws:wafv2:us-east-1:ACCOUNT_ID:global/webacl/CreatedByCloudFront-XXXXXXXX/..."
+```
 
 ### Lambda の更新（コード変更時）
 

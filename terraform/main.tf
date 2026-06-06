@@ -15,6 +15,7 @@ provider "aws" {
   region = var.region
 }
 
+
 data "aws_caller_identity" "current" {}
 
 # ── S3 ────────────────────────────────────────────────────────────────────────
@@ -260,6 +261,7 @@ resource "aws_cloudfront_distribution" "lfs" {
   enabled         = true
   is_ipv6_enabled = true
   comment         = "Git LFS object cache"
+  web_acl_id      = var.cloudfront_waf_web_acl_arn != "" ? var.cloudfront_waf_web_acl_arn : null
 
   origin {
     domain_name              = aws_s3_bucket.lfs.bucket_regional_domain_name

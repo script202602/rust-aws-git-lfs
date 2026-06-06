@@ -63,3 +63,9 @@ variable "allowed_github_users" {
   type        = string
   default     = ""
 }
+
+variable "cloudfront_waf_web_acl_arn" {
+  description = "CloudFront に関連付ける WAF Web ACL の ARN。定額プランサブスクリプション使用時は必須。空文字で WAF なし（例: \"arn:aws:wafv2:us-east-1:123456789012:global/webacl/CreatedByCloudFront-xxxxxxxx/...\"）"
+  type        = string
+  default     = ""
+}

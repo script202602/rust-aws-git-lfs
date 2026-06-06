@@ -83,6 +83,9 @@ function_name = "rust-aws-lfs"
 
 # Optional: restrict authentication to specific GitHub accounts
 # allowed_github_users = "alice,bob"  # Leave empty to allow any user with pull access
+
+# Required when using a CloudFront fixed pricing plan (WAF Web ACL is mandatory with the plan)
+# cloudfront_waf_web_acl_arn = "arn:aws:wafv2:us-east-1:ACCOUNT_ID:global/webacl/CreatedByCloudFront-XXXXXXXX/..."
 ```
 
 > The S3 bucket name is auto-generated as `lfs-<account-id>-<region>`.
@@ -182,6 +185,22 @@ Fixed pricing plans eliminate overage charges even during DDoS attacks or traffi
 3. Click the link in the **ID column** to open the distribution detail page
 4. In the **"Billing"** section, click **"Switch"** on the desired plan
 5. Review the details on the confirmation screen and confirm
+
+#### After Switching: Set `cloudfront_waf_web_acl_arn`
+
+When you subscribe to a fixed pricing plan, AWS automatically creates a WAF Web ACL and attaches it to the distribution. You must add its ARN to `terraform.tfvars`; otherwise `terraform apply` will fail with `InvalidArgument: You can't remove or replace the web ACL`.
+
+```bash
+# Get the ARN of the attached Web ACL
+aws cloudfront get-distribution --id <DISTRIBUTION_ID> \
+  --query 'Distribution.DistributionConfig.WebACLId' --output text
+```
+
+Add the result to `terraform/terraform.tfvars`:
+
+```hcl
+cloudfront_waf_web_acl_arn = "arn:aws:wafv2:us-east-1:ACCOUNT_ID:global/webacl/CreatedByCloudFront-XXXXXXXX/..."
+```
 
 ### Update Lambda (after code changes)
 
