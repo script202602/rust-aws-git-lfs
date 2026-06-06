@@ -1,2 +1,7 @@
 region             = "ap-northeast-1"
 function_name      = "rust-aws-lfs"
+allowed_github_users = ""
+
+# CloudFront 定額プランサブスクリプション使用時は以下を設定する
+# aws cloudfront get-distribution --id <DISTRIBUTION_ID> --query 'Distribution.DistributionConfig.WebACLId' --output text
+# cloudfront_waf_web_acl_arn = "arn:aws:wafv2:us-east-1:ACCOUNT_ID:global/webacl/CreatedByCloudFront-XXXXXXXX/..."
