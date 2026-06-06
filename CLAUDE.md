@@ -65,6 +65,7 @@ aws cloudformation deploy \
 | `LogRetentionDays` | 30 | CloudWatch Logs 保持日数 |
 | `CloudFrontGeoRestrictionLocations` | `""` | CloudFront ホワイトリスト国コード（例: `JP,US`）。空で制限なし |
 | `LambdaMaxConcurrency` | -1 | Lambda 同時実行数上限。-1 で無制限。`ApiThrottlingBurstLimit` 以上を推奨 |
+| `AllowedGithubUsers` | `""` | 認証を許可する GitHub ユーザー名（カンマ区切り）。空で pull 権限を持つ任意ユーザーを許可 |
 | `ApiThrottlingRateLimit` | 10 | API Gateway 持続リクエスト上限（req/s） |
 | `ApiThrottlingBurstLimit` | 50 | API Gateway バーストリクエスト上限 |
 
@@ -100,6 +101,7 @@ terraform import aws_cloudwatch_log_group.authorizer /aws/lambda/rust-aws-lfs-au
 | `log_retention_days` | 30 | CloudWatch Logs 保持日数 |
 | `cloudfront_geo_restriction_locations` | `[]` | CloudFront ホワイトリスト国コード（例: `["JP", "US"]`）。空で制限なし |
 | `lambda_reserved_concurrency` | -1 | Lambda 同時実行数上限。`api_throttling_burst_limit` 以上を推奨 |
+| `allowed_github_users` | `""` | 認証を許可する GitHub ユーザー名（カンマ区切り）。空で pull 権限を持つ任意ユーザーを許可 |
 | `api_throttling_rate_limit` | 10 | API Gateway 持続リクエスト上限（req/s） |
 | `api_throttling_burst_limit` | 50 | API Gateway バーストリクエスト上限 |
 | `cloudfront_private_key_pem` | 必須 | CloudFront Signed URL 用 RSA 秘密鍵（PEM）。`terraform.tfvars` にのみ記載しコミット禁止 |

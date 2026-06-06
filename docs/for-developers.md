@@ -80,6 +80,9 @@ function_name = "rust-aws-lfs"
 # api_throttling_burst_limit           = 50
 # log_retention_days                   = 30
 # cloudfront_geo_restriction_locations = ["JP"]  # Whitelist by country code
+
+# Optional: restrict authentication to specific GitHub accounts
+# allowed_github_users = "alice,bob"  # Leave empty to allow any user with pull access
 ```
 
 > The S3 bucket name is auto-generated as `lfs-<account-id>-<region>`.

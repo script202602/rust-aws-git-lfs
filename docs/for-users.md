@@ -55,6 +55,7 @@ Download the following 3 files from [GitHub Releases](https://github.com/script2
    | ApiThrottlingBurstLimit | `50` | API Gateway burst request limit |
    | LogRetentionDays | `30` | CloudWatch Logs retention period in days |
    | CloudFrontGeoRestrictionLocations | *(empty)* | Comma-separated ISO 3166-1 alpha-2 country codes for CloudFront whitelist (e.g. `JP,US`). Leave empty for no restriction. |
+   | AllowedGithubUsers | *(empty)* | Comma-separated GitHub usernames allowed to authenticate (e.g. `alice,bob`). Leave empty to allow any GitHub user with repository pull access. |
 
    > **⚠️ LambdaMaxConcurrency limit**
    >
